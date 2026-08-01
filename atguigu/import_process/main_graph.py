@@ -101,6 +101,9 @@ class MainGraphRunner:
         else:
             return END
 
+
+    # 一个目的是为了单例，每一次MainGraphRunner在实例化执行这一次流程的时候，graph对象只能有一个
+    # 另外一个目的就是为了让graph对象进行懒加载（延迟加载）
     def run(self,state):
         if not self.graph:
             self.graph = self.builder.compile()
