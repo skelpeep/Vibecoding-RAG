@@ -166,7 +166,7 @@ class NodePDFToMD(NodeBase):
 #       解压到哪，构造解压的目的地 路径
         unzip_file_path_obj = local_dir_obj / f"{pdf_path_obj.stem}"
 
-#       判断解压的目录存在不存在，如果存在先删除，然后再创建
+#       判断解压的目录存在不存在，如果存在先删除，然后再创建（幂等性删除）
         if unzip_file_path_obj.exists():
             shutil.rmtree(unzip_file_path_obj)
         unzip_file_path_obj.mkdir(parents=True, exist_ok=True)
