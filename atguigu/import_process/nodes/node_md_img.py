@@ -160,10 +160,13 @@ class NodeMDImg(NodeBase):
         #     print(item)
         # 2、调用api批量删除老的图片,delete_object_list这个参数要求必须是DeleteObject对象列表,我们就得把上面的图片列表转化成这个列表
         delete_image_list = [DeleteObject(obj.object_name) for obj in old_image_list]
-        minio_client.remove_objects(
+        # 删除的时候参考官网完整代码，返回的是一个迭代器，迭代器必须遍历才能真正的去删除
+        errors = minio_client.remove_objects(
             bucket_name=MinIoConfig.minio_bucket_name,
             delete_object_list=delete_image_list
         )
+        for error in errors:
+            logger.error("error occurred when deleting object", error)
 
         # 准备上传图片
         image_with_summary_and_url_list = []
