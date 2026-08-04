@@ -16,6 +16,7 @@ def get_minio_client():
                 endpoint=MinIoConfig.minio_endpoint,
                 access_key=MinIoConfig.minio_access_key,
                 secret_key=MinIoConfig.minio_secret_key,
+                secure=False, #禁用https
             )
 
             bucket_name = MinIoConfig.minio_bucket_name
