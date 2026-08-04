@@ -21,7 +21,18 @@ class LLMConfig:
     vl_model = os.getenv('VL_MODEL')
     item_model = os.getenv('ITEM_MODEL')
 
-if __name__ == '__main__':
-    env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.env"))
-    print(os.path.dirname(__file__))
-    print(env_path)
+class MinIoConfig:
+    minio_endpoint = os.getenv('MINIO_ENDPOINT')
+    minio_access_key = os.getenv('MINIO_ACCESS_KEY')
+    minio_secret_key = os.getenv('MINIO_SECRET_KEY')
+    minio_bucket_name = os.getenv('MINIO_BUCKET_NAME')
+    minio_img_dir = os.getenv('MINIO_IMG_DIR')
+
+
+
+
+
+# if __name__ == '__main__':
+#     env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.env"))
+#     print(os.path.dirname(__file__))
+#     print(env_path)
