@@ -7,7 +7,6 @@ from collections import deque
 from pathlib import Path
 
 from langchain.chat_models import init_chat_model
-from langchain_openai import ChatOpenAI
 from minio.deleteobjects import DeleteObject
 
 from atguigu.config.config import LLMConfig, MinIoConfig
@@ -237,6 +236,7 @@ class NodeMDImg(NodeBase):
 
         return {
             "md_content": md_content,
+            "md_path": str(new_md_path_obj),
         }
 
 
