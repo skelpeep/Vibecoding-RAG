@@ -55,7 +55,6 @@ class NodeDocumentSplit(NodeBase):
         marker = None  # 记录代码块的起始字符串（```|~~~）
         title_pattern = r'^\s*#{1,6}\s+.+'
         current_index = 0  # 切片从哪开始的下标
-
         section_list = []
         for idx, line in enumerate(md_line_list):
             line = line.strip()

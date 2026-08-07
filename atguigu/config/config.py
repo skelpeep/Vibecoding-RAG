@@ -29,10 +29,12 @@ class MinIoConfig:
     minio_img_dir = os.getenv('MINIO_IMG_DIR')
 
 
-
-
+class EmbeddingConfig:
+    bge_m3_path = os.getenv('BGE_M3_PATH')
+    bge_m3 = os.getenv('BGE_M3')
+    bge_device = os.getenv('BGE_DEVICE')
+    bge_fp16 = True if os.getenv('BGE_FP16') in ("True",1,True,"1") else False
 
 # if __name__ == '__main__':
-#     env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.env"))
-#     print(os.path.dirname(__file__))
-#     print(env_path)
+#     print(os.getenv('BGE_FP16'),type(os.getenv('BGE_FP16')))
+#     print(bool(os.getenv('BGE_FP16')))
