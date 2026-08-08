@@ -1,10 +1,16 @@
 # atguigu/import_process/nodes/node_item_name_recognition.py
 import json
 
+from langchain.chat_models import init_chat_model
+from pymilvus import DataType
+
+from atguigu.config.config import LLMConfig, MilvusConfig
+from atguigu.config.prompt import ITEM_NAME_SYSTEM_PROMPT, ITEM_NAME_USER_PROMPT_TEMPLATE
 from atguigu.import_process.base import NodeBase
 from atguigu.import_process.state import ImportGraphState
 from atguigu.tool.json_format_tool import json_format
 from atguigu.tool.logger import logger
+from atguigu.tool.milvus_client_tool import get_milvus_client
 
 
 class NodeItemNameRecognition(NodeBase):
@@ -41,6 +47,142 @@ class NodeItemNameRecognition(NodeBase):
                 break
             content_str += chunk_str
         content_str = content_str[:max_len]
+
+
+        # 准备大模型去识别得到主体名称
+        llm = init_chat_model(
+            model=LLMConfig.item_model,
+            model_provider="openai",
+            api_key=LLMConfig.openai_api_key,
+            base_url=LLMConfig.openai_api_base,
+            temperature=LLMConfig.llm_default_temperature,
+        )
+
+        messages = [
+            {"role":"system","content":ITEM_NAME_SYSTEM_PROMPT},
+            {"role":"user","content":ITEM_NAME_USER_PROMPT_TEMPLATE.format(file_title=file_title,context=content_str)},
+        ]
+
+        res = llm.invoke(input=messages)
+        item_name = res.content
+        item_name = item_name.replace(" ","").replace("\n","").replace("\t","")
+        if not item_name:
+            # itemname可能没有识别到，用文件名代替，但是文件名也可能是没有意义的，此时后期我们chunk当中file_title和item_name
+            # 就都没有意义了，但是我们还是得给这个chunk机会，我们后期再存储chunk的时候，向量化的内容是item_name拼接content内容
+            # 此时这个向量就可能被获取检索检索到。假设这种chunk后期检索相似度很低，那么大不了不要这个chunk
+            item_name = file_title
+
+
+        # 把item_name要向量化保存milvus(原因在于后期检索的时候需要,)
+        # 检索的时候第一个节点就是做用户意图识别，用户问问题，问的是和哪个商品相关的问题，我们需要去识别一下（历史消息）
+        # 识别出来的意图是哪个商品，需要在存储的商品主体milvus当中去做一个对比（相似性查找）
+        # 识别出来的意图产品如果找到了对应的item_name，那么我们就知道用户问的这个问题是和哪个商品相关的问题
+        milvus_client = get_milvus_client()
+        if not milvus_client:
+            logger.error("初始化milvus_client失败")
+            raise Exception("初始化milvus_client失败")
+
+        # 幂等性删除一般不会对整张表进行操作，一般都是针对表里面的相同数据进行幂等删除
+        collection_name = MilvusConfig.item_name_collection
+        if not milvus_client.has_collection(collection_name):
+            schema = milvus_client.create_schema(
+                auto_id=True,
+            )
+
+            schema.add_field(
+                field_name="id",
+                datatype=DataType.INT64,
+                is_primary=True,
+            ).add_field(
+                field_name="item_name",
+                datatype=DataType.VARCHAR,
+                max_length=100,
+            ).add_field(
+                field_name="file_title",
+                datatype=DataType.VARCHAR,
+                max_length=100,
+            ).add_field(
+                field_name="dense_vector",
+                datatype=DataType.FLOAT_VECTOR,
+                dim=1024
+            ).add_field(
+                field_name="sparse_vector",
+                datatype=DataType.SPARSE_FLOAT_VECTOR,
+            )
+
+            index_params = milvus_client.prepare_index_params()
+            index_params.add_index(
+                field_name="dense_vector",
+                index_type="IVF_FLAT", #暴力检索
+                metric_type="COSINE",
+                params={"nlist": 128,"nprobe": 10}, #提升效率否则暴力检索虽然准备效率太低
+            )
+
+            index_params.add_index(
+                field_name="sparse_vector",
+                index_type="SPARSE_INVERTED_INDEX", #暴力检索
+                metric_type="IP",
+                params={
+                    "inverted_index_algo": "DAAT_MAXSCORE",
+                    # 高效的稀疏检索算法
+                    "normalize": True,
+                    # ↑ L2 归一化，让内积 (IP) 等价于余弦相似度
+                    "quantization": "none"
+                    # ↑ 关闭量化，保持原始精度：模型生成的向量已经压缩的一半的精度了（BGE_FP16=1），这里就不再压缩了
+                    # "quantization": "none" → 存储原始向量，不压缩
+                    # "quantization": "sq8" → 存储压缩后的向量（8-bit 量化
+                }
+            )
+
+            milvus_client.create_collection(
+                collection_name=collection_name,
+                schema=schema,
+                index_params=index_params,
+            )
+
+        # 准备数据进行插入数据
+        # 幂等删除item_name相同的数据
+        # milvus要删除数据，需要先去加载一下这个表
+        # 这里在删除表当中的同名数据，不是字段也不是表
+        milvus_client.load_collection(collection_name=collection_name)
+        safe_item_name = item_name.replace("\\","\\\\").replace("'","\\'").replace('"','\\"')
+        filter_str = f"item_name == '{safe_item_name}'"
+        milvus_client.delete(collection_name=collection_name,filter=filter_str)
+
+
+        #插入数据
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
