@@ -21,7 +21,7 @@ def get_bge_m3_model():
 def get_bge_m3_embedding(texts: List[str]):
     bge_m3_model = get_bge_m3_model()
     embedding = bge_m3_model.encode_documents(texts)
-    print(embedding)
+    # print(embedding)
 
     # print(embedding.get("dense"))
     # print(embedding.get("sparse"))
