@@ -186,6 +186,10 @@ class NodeItemNameRecognition(NodeBase):
         #第五大步：插入数据到milvus当中，顺便把item_name回填到每个chunk
         self.insert_data_backup(chunks, collection_name, file_title, item_name, milvus_client)
 
+        with open(r"D:\output\hak180产品安全手册\item_name_chunks.json","w",encoding="utf-8") as f:
+            # json.dump(chunks, f, ensure_ascii=False, indent=4)
+            f.write(json_format(chunks))
+
         return {
             "item_name": item_name,
             "chunks": chunks
@@ -197,7 +201,6 @@ if __name__ == '__main__':
     node = NodeItemNameRecognition()
     # with open(r"D:\output\hak180产品安全手册\chunks.json","r",encoding="utf-8") as f:
     #     chunks_json = f.read()  如果这样写，下面需要反序列化
-
     with open(r"D:\output\hak180产品安全手册\chunks.json","r",encoding="utf-8") as f:
         chunks= json.load(f)
 

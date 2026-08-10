@@ -117,7 +117,8 @@ class MainGraphRunner:
 if __name__ == '__main__':
     # runner = MainGraphRunner()
     init_state = {
-        "local_file_path": r"D:\output\hak180产品安全手册.pdf"
+        "local_file_path": r"D:\output\hak180产品安全手册.pdf",
+        "local_dir": r"D:\output"
     }
     # result = runner.run(init_state)
     # logger.info(result)
