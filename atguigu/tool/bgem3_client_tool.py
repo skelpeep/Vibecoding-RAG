@@ -7,6 +7,9 @@ from atguigu.tool.json_format_tool import json_format
 from atguigu.tool.logger import logger
 
 bge_m3_model = None
+
+
+
 def get_bge_m3_model():
     global bge_m3_model
     if not bge_m3_model:

@@ -42,6 +42,10 @@ class MilvusConfig:
     item_name_collection = os.getenv('ITEM_NAME_COLLECTION')
 
 
+class MongoConfig:
+    # mongo 服务地址
+    mongo_url = os.getenv('MONGO_URL')
+    mongo_db_name = os.getenv('MONGO_DB_NAME')
 
 
 # if __name__ == '__main__':
