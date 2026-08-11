@@ -21,9 +21,9 @@ def get_mongo_collection():
     global collection
     global db
     mongo_client = get_mongo_client()
-    if not db:
+    if db is None:
         db = mongo_client[MongoConfig.mongo_db_name]
-    if not collection:
+    if collection is None:
         collection = db["chat_history"]
         collection.create_index([("_id", 1),("ts",-1),("session_id",1)])
     return collection
@@ -56,7 +56,7 @@ def add_or_update_history(session_id,role,text,rewritten_query=None,item_names=N
             "item_names": item_names,
             "ts": ts or time.time(),
         }
-        collection.updateOne({"_id": _id}, {"$set": data})
+        collection.update_one({"_id": _id}, {"$set": data})
         return _id
     else:
         # 新增操作
@@ -85,7 +85,7 @@ def update_item_names_and_query(session_id,item_names=None,rewritten_query=None)
         "item_names": item_names,
         "rewritten_query": rewritten_query,
     }
-    collection.updateOne({"session_id": session_id},{"$set":data})
+    collection.update_many({"session_id": session_id},{"$set":data})
 
 if __name__ == '__main__':
     # add_or_update_history("test_001", "user", "咨询下烫金机。")
@@ -97,7 +97,6 @@ if __name__ == '__main__':
 
     # result = get_recent_history_list("test_001")
     # print(result)
-
 
     clear_history("test_001")
 
