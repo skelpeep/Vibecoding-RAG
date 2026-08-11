@@ -41,14 +41,14 @@ def create_reqs(
         }
 
     dense_req = AnnSearchRequest(
-        data=dense_data,
+        data=[dense_data],
         anns_field=dense_anns_field,
         limit=limit,
         param=dense_param,
         expr=expr,
     ) #稠密
     sparse_req = AnnSearchRequest(
-        data=sparse_data,
+        data=[sparse_data],
         anns_field=sparse_anns_field,
         limit=limit,
         param=sparse_param,

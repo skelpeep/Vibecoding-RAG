@@ -78,14 +78,13 @@ def clear_history(session_id):
     collection.delete_many({"session_id": session_id})
 
 
-def update_item_names_and_query(session_id,item_names=None,rewritten_query=None):
+def update_item_names_and_query(ids,item_names=None,rewritten_query=None):
     collection = get_mongo_collection()
     data = {
-        "session_id": session_id,
         "item_names": item_names,
         "rewritten_query": rewritten_query,
     }
-    collection.update_many({"session_id": session_id},{"$set":data})
+    collection.update_many({"_id": {"$in":ids}},{"$set":data})
 
 if __name__ == '__main__':
     # add_or_update_history("test_001", "user", "咨询下烫金机。")
