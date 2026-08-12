@@ -1,4 +1,4 @@
-from pymilvus import MilvusClient, AnnSearchRequest, WeightedRanker
+from pymilvus import MilvusClient, AnnSearchRequest, WeightedRanker, RRFRanker
 
 from atguigu.config.config import MilvusConfig
 
@@ -67,7 +67,6 @@ def create_reqs(
 
 def search_hybird(collection_name, reqs,ranker=(0.5,0.5),limit=10,output_fields=None):
     milvus_client = get_milvus_client()
-
     # 自己分配权重
     weight_ranker = WeightedRanker(ranker[0],ranker[1],norm_score=True)
     res = milvus_client.hybrid_search(

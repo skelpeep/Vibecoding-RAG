@@ -1,10 +1,7 @@
 # atguigu/query_process/nodes/node_item_name_confirm.py
 
 import json
-
 from langchain.chat_models import init_chat_model
-from openai import api_key
-
 from atguigu.config.config import LLMConfig, MilvusConfig
 from atguigu.config.prompt import ITEM_NAME_EXTRACT_SYSTEM_PROMPT, ITEM_NAME_EXTRACT_TEMPLATE
 from atguigu.query_process.base import NodeBase
@@ -12,7 +9,7 @@ from atguigu.query_process.state import QueryGraphState
 from atguigu.tool.bgem3_client_tool import get_bge_m3_embedding
 from atguigu.tool.json_format_tool import json_format
 from atguigu.tool.logger import logger
-from atguigu.tool.milvus_client_tool import milvus_client, get_milvus_client, create_reqs, search_hybird
+from atguigu.tool.milvus_client_tool import create_reqs, search_hybird
 from atguigu.tool.mongo_client_tool import add_or_update_history, get_recent_history_list, update_item_names_and_query
 
 
@@ -92,6 +89,7 @@ class NodeItemNameConfirm(NodeBase):
             )
             print(json_format(res))
             print(res[0])
+
             search_item_names = [
                 {
                     "original_item_name": item_name,
@@ -161,8 +159,6 @@ class NodeItemNameConfirm(NodeBase):
         return history_content, message_id, original_query, session_id
 
 
-
-
     def process(self, state: QueryGraphState):
         # 第一大步：获取state当中的session_id和original_query，然后根据sessionid获取最近的10条记录整理成大串
         history_content, message_id, original_query, session_id = self.get_history_content(state)
@@ -192,24 +188,23 @@ class NodeItemNameConfirm(NodeBase):
             "history":get_recent_history_list(session_id,limit=10)
         }
 
-if __name__ == '__main__':
-    if __name__ == "__main__":
-        # 模拟会话历史
-        session_id = "test_001"
-        add_or_update_history(session_id, "user", "咨询下烫金机。")
-        add_or_update_history(session_id, "assistant", "您好。请问是哪个型号")
-        add_or_update_history(session_id, "user", "hak180")
-        add_or_update_history(session_id, "assistant", "具体有什么问题呢？")
+if __name__ == "__main__":
+    # 模拟会话历史
+    session_id = "test_001"
+    # add_or_update_history(session_id, "user", "咨询下烫金机。")
+    # add_or_update_history(session_id, "assistant", "您好。请问是哪个型号")
+    # add_or_update_history(session_id, "user", "hak180")
+    # add_or_update_history(session_id, "assistant", "具体有什么问题呢？")
 
-        # 初始化图状态
-        init_state = {
-            "session_id": "test_001",
-            "original_query": "咋用？"
-        }
+    # 初始化图状态
+    init_state = {
+        "session_id": "test_001",
+        "original_query": "咋用？"
+    }
 
-        # 创建节点对象
-        node_item_name_confirm = NodeItemNameConfirm()
-        # 执行节点的单元测试
-        result = node_item_name_confirm(init_state)
-        # 将返回的图状态进行json序列化
-        logger.info(json_format(result))
+    # 创建节点对象
+    node_item_name_confirm = NodeItemNameConfirm()
+    # 执行节点的单元测试
+    result = node_item_name_confirm(init_state)
+    # 将返回的图状态进行json序列化
+    logger.info(json_format(result))
