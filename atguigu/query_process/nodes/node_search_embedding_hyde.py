@@ -40,12 +40,12 @@ class NodeSearchEmbeddingHyde(NodeBase):
         dense_data = embeddings.get("dense")[0]
         sparse_data = embeddings.get("sparse")[0]
         # 整理item_name
-        item_names = [
-            item.replace("\\", '\\\\').replace("'", "\\'").replace('"', '\\"')
-            for item in item_names
-        ]
+        # item_names = [
+        #     item.replace("\\", '\\\\').replace("'", "\\'").replace('"', '\\"')
+        #     for item in item_names
+        # ]
         # 混合搜索添加标量字段过滤
-        expr = f"item_name in {json.dumps(item_names)}"  # 要求in 后面的列表也是一个字符串，json序列化是最简单的
+        expr = f"item_name in {json.dumps(item_names,ensure_ascii=False)}"  # 要求in 后面的列表也是一个字符串，json序列化是最简单的
         reqs = create_reqs(
             dense_data=dense_data,
             sparse_data=sparse_data,

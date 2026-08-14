@@ -37,7 +37,7 @@ class NodeRrf(NodeBase):
         for chunks,weight in weight_embedding:
             for idx,chunk in enumerate(chunks,start=1):
                 chunk_id = chunk.get("id")
-                chunk_score = chunk.get("score") + weight / (idx + 60)
+                chunk_score =  weight / (idx + 60)
 #               后期两路如果有重复，那么分数是要相加的,判断final_chunks_dict当中是否有这个id，
                 #如果有的话，代表之前的那一路已经有一个这个chunk,就把分数累加上去即可，
                 # 如果没有就新建一个键值对，以chunk_id为键，以chunk为值。
@@ -46,29 +46,11 @@ class NodeRrf(NodeBase):
                 else:
                     chunk["score"] = chunk_score
                     final_chunks_dict[chunk_id] = chunk
-        print(json_format(final_chunks_dict))
 
         rrf_chunks = sorted(final_chunks_dict.values(),key=lambda x:x["score"],reverse=True)
         return {
             "rrf_chunks":rrf_chunks[:10]
         }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 if __name__ == '__main__':

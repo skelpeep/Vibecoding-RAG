@@ -55,3 +55,7 @@ class McpConfig:
 # if __name__ == '__main__':
 #     print(os.getenv('BGE_FP16'),type(os.getenv('BGE_FP16')))
 #     print(bool(os.getenv('BGE_FP16')))
+
+class RerankConfig:
+    rerank_base_url=os.getenv('RERANK_BASE_URL')
+    rerank_api_key=os.getenv('RERANK_API_KEY')

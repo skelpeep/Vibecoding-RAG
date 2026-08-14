@@ -27,6 +27,7 @@ dependencies = [
     "modelscope>=1.39.1",
     "openai-agents>=0.20.0",
     "mcp>=1.28,<2",
+    "dashscope>=1.26.7",
 ]
 
 [project.scripts]
