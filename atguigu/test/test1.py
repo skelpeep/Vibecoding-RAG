@@ -34,15 +34,11 @@
 #     print('未检测到可用的 GPU，将使用 CPU')
 
 
-list1 = [1,2,3]
-list1.append(4)
-print(list1)
 
-list1.append([5,6])
-print(list1)
+list1 = [1,2,3,4,5,6,7,8,9,10]
+for i in range(0,len(list1)):
+    print(list1[i],list1[i+1])
 
-list1.extend([7,8])
-print(list1)
 
 
 

@@ -20,7 +20,34 @@ class NodeRerank(NodeBase):
         # 第二大步：调用 rerank 模型，传入合并后的文档列表，进行重排序
         rerank_merge_docs = self.get_rerank_chunks(merge_docs, state)
         # 第三步：断崖检测获取高分数据的chunks
-        #todo
+        return {
+            "reranked_docs": self.cliff_detection(rerank_merge_docs)
+        }
+
+    def cliff_detection(self, rerank_merge_docs):
+        # 动态 TopK：硬上限：最多取前 N 条（<=10）
+        RERANK_MAX_TOPK: int = 10
+        # 最小 TopK：至少保留前 N 条（>=1，且 <= RERANK_MAX_TOPK）
+        RERANK_MIN_TOPK: int = 3  # 总数最少条数
+        # 断崖阈值（相对）
+        RERANK_GAP_RATIO: float = 0.25
+        # 断崖阈值（绝对）
+        RERANK_GAP_ABS: float = 0.10
+        # 这个是当下适合使用的最大 TopK 值，根据文档总数动态调整
+        use_max_topk = min(RERANK_MAX_TOPK, len(rerank_merge_docs))
+        use_min_topk = min(RERANK_MIN_TOPK, use_max_topk)
+        # use_max_topk-1 如果不-1，那么假设use_max_topk刚好是列表的长度，此时遍历的时候
+        # 就可以拿到最后一个值，但是要比较是现在的值和下一个值，进行相减。此时拿下一个值的时候下标越界就炸
+        # -1的目的是拿到倒数第二个值就算最后一次了，不然会越界
+
+        for i in range(use_min_topk - 1, use_max_topk - 1):
+            current_score = rerank_merge_docs[i].get("score")
+            next_score = rerank_merge_docs[i + 1].get("score")
+            abs_gap = abs(current_score - next_score)
+            ratio_gap = abs_gap / (current_score + 1e-6)
+            if ratio_gap > RERANK_GAP_RATIO or abs_gap > RERANK_GAP_ABS:
+                return  rerank_merge_docs[:i + 1]
+        return rerank_merge_docs[:use_max_topk]
 
     def get_rerank_chunks(self, merge_docs, state):
         rewritten_query = state.get("rewritten_query")
@@ -31,7 +58,6 @@ class NodeRerank(NodeBase):
             merge_docs[item["index"]]["score"] = item["score"]
         # 对重排序的文档列表进行倒序排序
         rerank_merge_docs = sorted(merge_docs, key=lambda x: x["score"], reverse=True)
-        logger.info(json_format(rerank_merge_docs))
         return rerank_merge_docs
 
     def get_merge_chunks(self, state):
