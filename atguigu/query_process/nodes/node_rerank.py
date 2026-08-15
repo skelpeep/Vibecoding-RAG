@@ -49,6 +49,7 @@ class NodeRerank(NodeBase):
                 return  rerank_merge_docs[:i + 1]
         return rerank_merge_docs[:use_max_topk]
 
+
     def get_rerank_chunks(self, merge_docs, state):
         rewritten_query = state.get("rewritten_query")
         texts = [doc.get("content") for doc in merge_docs]
@@ -89,7 +90,7 @@ class NodeRerank(NodeBase):
             }
             for doc in merge_docs
         ]
-        logger.info(json_format(merge_docs))
+        # logger.info(json_format(merge_docs))
         return merge_docs
 
 
