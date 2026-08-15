@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>我爱杨幂</title>
+</head>
+<body>
+    <h1>我爱你</h1>
+    <button id="btn">点我发请求</button>
+    <p>我就是爱杨幂</p>
+    <img src="http://localhost:8000/static/mylove05.png" alt="杨幂">
+
+
+
+
+
+    <script>
+        const btn = document.getElementById('btn')
+        btn.onclick = async function (){
+            // console.log("我爱杨幂哈哈")
+        //     发请求ajax请求
+            res = await fetch("http://localhost:8000/test_cors")
+            data = await res.json()
+            console.log(data)
+        }
+    </script>
+
+
+</body>
+</html>
