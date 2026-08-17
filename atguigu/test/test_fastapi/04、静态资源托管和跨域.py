@@ -17,7 +17,7 @@ static_dir = BASE_DIR / "static"
 # 第三个参数：给挂载点起个名字（路由的名字）
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-
+#
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,9 +25,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-
 
 
 @app.get("/")

@@ -25,7 +25,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-queue_dict = {}
+queue_dict = {
+#     session_id: Queue()
+}
 
 def make_email(session_id:str):
     global queue_dict
@@ -42,9 +44,6 @@ def make_email(session_id:str):
     q.put("我爱杨幂04")
     q.put("我爱杨幂05")
     q.put(None)  # 3、None作为结束标识
-
-
-
 
 
 

@@ -57,7 +57,7 @@ def testbody(user: User):
 # 4、接收混合参数  路径查询请求体一起传递(第一种接收方式)
 # @app.post("/testmixed/{id}")
 # def testmixed(
-#     user: User,
+#     user: User = Body(...,description="用户请求体信息"),
 #     id: int = Path(...,description="用户id"),
 #     name: str = Query(...,description="姓名"),
 #     age: int = Query(default=18,description="年龄"),
@@ -90,6 +90,7 @@ def testmixed(
 def testheader(request: Request):
     # request.headers
     print(request.headers.get("token"))
+    print(request.headers.get("Connection"))
     return {"message": "Hello World"}
 
 # 7、接收文件

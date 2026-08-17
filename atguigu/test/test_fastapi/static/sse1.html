@@ -13,13 +13,11 @@
     <script>
         const btn = document.getElementById("btn")
         btn.onclick = async function (){
-            // 获取inoput的内容、
+            // 获取input的内容、
             const session_id = document.getElementById("ipt").value
             const res = await fetch("http://localhost:8000/sse01?session_id=" + session_id)
             const data = await res.json()
             console.log(data)
-
-
 
         //     订阅sse 就是发请求和后端进行长连接
             es = new EventSource("http://localhost:8000/stream?session_id=" + session_id) // 订阅了sse服务
