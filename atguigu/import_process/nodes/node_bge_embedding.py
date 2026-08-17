@@ -33,9 +33,9 @@ class NodeBGEEmbedding(NodeBase):
                 chunk["sparse_vector"] = embedding.get("sparse")[idx]
 
 #         备份chunks后期下个节点测试使用
-        with open(r"D:\output\hak180产品安全手册\embedding_chunks.json","w",encoding="utf-8") as f:
-            # f.write(json.dumps(chunks,ensure_ascii=False))
-            f.write(json_format(chunks))
+#         with open(r"D:\output\hak180产品安全手册\embedding_chunks.json","w",encoding="utf-8") as f:
+#             # f.write(json.dumps(chunks,ensure_ascii=False))
+#             f.write(json_format(chunks))
 
         return {
             "chunks": chunks,
