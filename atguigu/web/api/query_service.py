@@ -55,6 +55,7 @@ async def get_history(session_id: str = Path(..., description="会话ID")):
         }
         for item in history_list
     ]
+    history_list.sort(key=lambda a: a.get("ts"))
     return {"items":history_list} #返回数据的时候要看前端页面写的是什么，前端已经完成的情况下
 
 #第三步：情况历史记录
@@ -62,9 +63,6 @@ async def get_history(session_id: str = Path(..., description="会话ID")):
 async def delete_history(session_id: str = Path(..., description="会话ID")):
     clear_history(session_id)
     return {"msg":"删除成功"}
-
-
-
 
 #第五步：书写后台任务调用graph
 # queue_dict = {}

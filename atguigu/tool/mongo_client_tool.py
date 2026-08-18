@@ -33,7 +33,7 @@ def get_mongo_collection():
 # 1、获取最近的多少条历史记录 limit来限定  方法目的是后期再意图识别的时候需要获取历史记录来识别
 def get_recent_history_list(session_id,limit=10):
     collection = get_mongo_collection()
-    result = collection.find({"session_id": session_id}).sort("ts", 1).limit(limit)
+    result = collection.find({"session_id": session_id}).sort("ts", -1).limit(limit)
     return list(result)  #我们拿到的不是列表，而是游标对象，需要自己强装
 
 
