@@ -191,10 +191,10 @@ class NodeItemNameConfirm(NodeBase):
 if __name__ == "__main__":
     # 模拟会话历史
     session_id = "test_001"
-    # add_or_update_history(session_id, "user", "咨询下烫金机。")
-    # add_or_update_history(session_id, "assistant", "您好。请问是哪个型号")
-    # add_or_update_history(session_id, "user", "hak180")
-    # add_or_update_history(session_id, "assistant", "具体有什么问题呢？")
+    add_or_update_history(session_id, "user", "咨询下烫金机。")
+    add_or_update_history(session_id, "assistant", "您好。请问是哪个型号")
+    add_or_update_history(session_id, "user", "hak180")
+    add_or_update_history(session_id, "assistant", "具体有什么问题呢？")
 
     # 初始化图状态
     init_state = {

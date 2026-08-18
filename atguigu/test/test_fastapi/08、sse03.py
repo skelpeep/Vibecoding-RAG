@@ -86,8 +86,8 @@ async def generate_answer(session_id):
             msg = await q.get()
             await asyncio.sleep(1)
             # a = 10 / 0
-            yield f"event:{msg.get("event")}\n"
-            yield f"data:{msg.get("data")}\n\n"
+            yield f"event: {msg.get("event")}\n"
+            yield f"data: {msg.get("data")}\n\n"
             if msg is None:
                 break
         except Exception as e:

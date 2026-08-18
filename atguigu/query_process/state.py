@@ -1,5 +1,5 @@
 # atguigu/query_process/state.py
-
+from queue import Queue
 from typing import TypedDict, List
 
 class QueryGraphState(TypedDict):
@@ -7,10 +7,10 @@ class QueryGraphState(TypedDict):
     查询流程图状态
     包含整个查询流程中传递的所有数据。
     """
-
+    task_id: str  # 任务ID
     session_id: str  # 会话ID
     message_id: str  # 消息ID
-
+    q:Queue
     original_query: str  # 用户原始问题
 
     # 检索过程中的中间数据
