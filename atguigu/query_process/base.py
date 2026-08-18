@@ -9,7 +9,7 @@ from abc import abstractmethod, ABC
 
 from atguigu.query_process.state import QueryGraphState
 from atguigu.tool.logger import logger
-from atguigu.tool.task_utils import add_running_task, get_task_info, add_done_task
+from atguigu.tool.task_utils import add_running_task, get_task_info, add_done_task, put_data
 
 
 class NodeBase(ABC):
@@ -31,17 +31,19 @@ class NodeBase(ABC):
 
             logger.info(f"{self.name} 开始执行...")
 
-            q = state.get("q")
+            # q = state.get("q")
             task_id = state.get("task_id")
             # 更新节点状态，放到队列，sse后期就可以从队列当中取出更新的数据状态推送给前端
             add_running_task(task_id,self.name)
-            q.put({"event": "progress", "data": get_task_info(task_id)})
+            # q.put({"event": "progress", "data": get_task_info(task_id)})
+            put_data(task_id, event="progress", data=get_task_info(task_id))
 
             result = self.process(state)
 
             # 更新节点状态，放到队列，sse后期就可以从队列当中取出更新的数据状态推送给前端
             add_done_task(task_id, self.name)
-            q.put({"event": "progress", "data": get_task_info(task_id)})
+            # q.put({"event": "progress", "data": get_task_info(task_id)})
+            put_data(task_id, event="progress", data=get_task_info(task_id))
             logger.info(f"{self.name} 结束执行...")
 
             return result

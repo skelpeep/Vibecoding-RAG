@@ -38,7 +38,7 @@ def get_recent_history_list(session_id,limit=10):
 
 
 
-def add_or_update_history(session_id,role,text,rewritten_query=None,item_names=None,ts=None,_id=None):
+def add_or_update_history(session_id,role,text,rewritten_query=None,item_names=None,image_urls=None,ts=None,_id=None):
     # 全量更新和增量更新
     # 为什么人们在封装数据库增和改的时候全部合二为一写一个方法或者函数，就是因为他们传递参数的时候唯一不同就是id
     # 如果是修改，那么id一定存在
@@ -53,6 +53,7 @@ def add_or_update_history(session_id,role,text,rewritten_query=None,item_names=N
             "text": text,
             "rewritten_query": rewritten_query,
             "item_names": item_names,
+            "image_urls": image_urls,
             "ts": ts or time.time(),
         }
         collection.update_one({"_id": _id}, {"$set": data})
@@ -65,6 +66,7 @@ def add_or_update_history(session_id,role,text,rewritten_query=None,item_names=N
             "text": text,
             "rewritten_query": rewritten_query,
             "item_names": item_names,
+            "image_urls": image_urls,
             "ts": ts or time.time(),
         }
         result = collection.insert_one(data)

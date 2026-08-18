@@ -1,3 +1,5 @@
+import json
+import time
 import uuid
 from queue import Queue
 
@@ -5,11 +7,12 @@ import uvicorn
 from fastapi import FastAPI, Path, Body, BackgroundTasks
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import StreamingResponse
 
 from atguigu.query_process.main_graph import MainGraphRunner
 from atguigu.tool.mongo_client_tool import get_recent_history_list, clear_history
 from atguigu.tool.task_utils import update_task_status, TASK_STATUS_PROCESSING, get_task_info, TASK_STATUS_COMPLETED, \
-    TASK_STATUS_FAILED
+    TASK_STATUS_FAILED, create_queue, put_data, get_data
 
 app = FastAPI(
     title="检索模块对应的接口",
@@ -61,43 +64,48 @@ async def delete_history(session_id: str = Path(..., description="会话ID")):
     return {"msg":"删除成功"}
 
 
-#第四步：查询接口
-class QueryParams(BaseModel):
-    query: str = Field(..., description="查询内容")
-    session_id: str = Field(..., description="会话ID")
 
 
-queue_dict = {}
-
+#第五步：书写后台任务调用graph
+# queue_dict = {}
 
 def run_main_graph(task_id, original_query, session_id):
     # 造队列
-    if not queue_dict.get(task_id):
-        queue_dict[task_id] = Queue()
+    # if not queue_dict.get(task_id):
+    #     queue_dict[task_id] = Queue()
+    # q = queue_dict[task_id]
 
-    q = queue_dict[task_id]
+    create_queue(task_id) #创建队列
 
     try:
         init_state = {
             "task_id": task_id,
             "original_query": original_query,
             "session_id": session_id,
-            "q":q
+            # "q":q
         }
         # 更新总状态，放到队列，sse后期就可以从队列当中取出更新的数据状态推送给前端
         update_task_status(task_id, TASK_STATUS_PROCESSING)
-        q.put({"event":"progress","data":get_task_info(task_id)})
-
+        # q.put({"event":"progress","data":get_task_info(task_id)})
+        put_data(task_id,event="progress",data=get_task_info(task_id))
         MainGraphRunner.create_and_run(init_state)
         # 更新总状态，放到队列，sse后期就可以从队列当中取出更新的数据状态推送给前端
         update_task_status(task_id, TASK_STATUS_COMPLETED)
-        q.put({"event": "progress", "data": get_task_info(task_id)})
+        # q.put({"event": "progress", "data": get_task_info(task_id)})
+        put_data(task_id, event="progress", data=get_task_info(task_id))
     except Exception as e:
         # 更新总状态，放到队列，sse后期就可以从队列当中取出更新的数据状态推送给前端
         update_task_status(task_id, TASK_STATUS_FAILED)
-        q.put({"event": "error", "data": get_task_info(task_id)})
+        # q.put({"event": "error", "data": get_task_info(task_id)})
+        put_data(task_id, event="error", data=get_task_info(task_id))
         raise e
 
+
+
+#第四步：查询接口
+class QueryParams(BaseModel):
+    query: str = Field(..., description="查询内容")
+    session_id: str = Field(..., description="会话ID")
 
 @app.post("/query")
 async def query(background_tasks:BackgroundTasks,query_params: QueryParams = Body(...,description="查询请求体参数")):
@@ -117,9 +125,20 @@ async def query(background_tasks:BackgroundTasks,query_params: QueryParams = Bod
 
 
 
+def gennerate_stream(task_id):
+    # while not queue_dict.get(task_id):
+    #     time.sleep(1)
+    # q = queue_dict[task_id]
+    while True:
+        item = get_data(task_id)
+        time.sleep(0.1)
+        yield f"event: {item.get("event")}\n"
+        yield f"data: {json.dumps(item.get("data"),ensure_ascii=False)}\n\n"
 
 
-
+@app.get("/stream/{task_id}")
+async def stream(task_id: str = Path(..., description="任务ID")):
+    return StreamingResponse(gennerate_stream(task_id), media_type="text/event-stream")
 
 
 

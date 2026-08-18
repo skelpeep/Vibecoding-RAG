@@ -10,7 +10,7 @@ class QueryGraphState(TypedDict):
     task_id: str  # 任务ID
     session_id: str  # 会话ID
     message_id: str  # 消息ID
-    q:Queue
+    # q:Queue
     original_query: str  # 用户原始问题
 
     # 检索过程中的中间数据

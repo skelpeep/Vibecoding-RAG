@@ -1,4 +1,6 @@
+import time
 from collections import defaultdict
+from queue import Queue
 from typing import Dict, List
 
 # ---------------------------
@@ -162,3 +164,25 @@ def get_task_info(task_id: str) -> Dict[str, any]:
         "done_list": get_done_task_list(task_id),
         "durations": get_node_durations(task_id)
     }
+
+
+queue_dict: Dict[str, Queue] = {}
+
+def create_queue(task_id: str):
+    if not queue_dict.get(task_id):
+        queue_dict[task_id] = Queue()
+    return queue_dict[task_id]
+
+
+def put_data(task_id,event,data):
+    while not queue_dict.get(task_id):
+        time.sleep(1)
+    q = queue_dict.get(task_id)
+    q.put({"event":event,"data":data})
+
+
+def get_data(task_id):
+    while not queue_dict.get(task_id):
+        time.sleep(1)
+    q = queue_dict.get(task_id)
+    return q.get()

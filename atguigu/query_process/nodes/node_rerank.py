@@ -30,9 +30,9 @@ class NodeRerank(NodeBase):
         # 最小 TopK：至少保留前 N 条（>=1，且 <= RERANK_MAX_TOPK）
         RERANK_MIN_TOPK: int = 3  # 总数最少条数
         # 断崖阈值（相对）
-        RERANK_GAP_RATIO: float = 0.25
+        RERANK_GAP_RATIO: float = 0.35
         # 断崖阈值（绝对）
-        RERANK_GAP_ABS: float = 0.10
+        RERANK_GAP_ABS: float = 0.20
         # 这个是当下适合使用的最大 TopK 值，根据文档总数动态调整
         use_max_topk = min(RERANK_MAX_TOPK, len(rerank_merge_docs))
         use_min_topk = min(RERANK_MIN_TOPK, use_max_topk)
@@ -47,7 +47,7 @@ class NodeRerank(NodeBase):
             ratio_gap = abs_gap / (current_score + 1e-6)
             if ratio_gap > RERANK_GAP_RATIO or abs_gap > RERANK_GAP_ABS:
                 return  rerank_merge_docs[:i + 1]
-        return rerank_merge_docs[:use_max_topk]
+        return rerank_merge_docs
 
 
     def get_rerank_chunks(self, merge_docs, state):
