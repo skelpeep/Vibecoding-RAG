@@ -8,7 +8,7 @@ from atguigu.import_process.base import NodeBase
 from atguigu.import_process.state import ImportGraphState
 from atguigu.tool.json_format_tool import json_format
 from atguigu.tool.logger import logger
-from atguigu.tool.milvus_client_tool import get_milvus_client
+from atguigu.tool.milvus_client_tool import get_milvus_client, validate_dense_collection
 
 
 class NodeImportMilvus(NodeBase):
@@ -64,9 +64,6 @@ class NodeImportMilvus(NodeBase):
                 field_name="dense_vector",
                 datatype=DataType.FLOAT_VECTOR,
                 dim=dim,
-            ).add_field(
-                field_name="sparse_vector",
-                datatype=DataType.SPARSE_FLOAT_VECTOR,
             )
 
             index_params = milvus_client.prepare_index_params()
@@ -77,27 +74,13 @@ class NodeImportMilvus(NodeBase):
                 params={"nlist": 128, "nprobe": 10},
             )
 
-            index_params.add_index(
-                field_name="sparse_vector",
-                index_type="SPARSE_INVERTED_INDEX",  # AUTOINDEX
-                metric_type="IP",
-                params={
-                    "inverted_index_algo": "DAAT_MAXSCORE",
-                    # 高效的稀疏检索算法
-                    "normalize": True,
-                    # ↑ L2 归一化，让内积 (IP) 等价于余弦相似度
-                    "quantization": "none"
-                    # ↑ 关闭量化，保持原始精度：模型生成的向量已经压缩的一半的精度了（BGE_FP16=1），这里就不再压缩了
-                    # "quantization": "none" → 存储原始向量，不压缩
-                    # "quantization": "sq8" → 存储压缩后的向量（8-bit 量化
-                }
-            )
-
             milvus_client.create_collection(
                 collection_name=collection_name,
                 schema=schema,
                 index_params=index_params,
             )
+        else:
+            validate_dense_collection(milvus_client, collection_name, dim)
         return collection_name, milvus_client
 
     def insert_data(self, chunks, collection_name, file_title, milvus_client):
@@ -105,7 +88,8 @@ class NodeImportMilvus(NodeBase):
         milvus_client.load_collection(collection_name=collection_name)
         file_title = file_title.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"')
         filter_str = f"file_title == '{file_title}'"
-        milvus_client.delete(collection_name=collection_name, filter=filter_str)
+        if milvus_client.query(collection_name=collection_name, filter=filter_str, output_fields=["id"], limit=1):
+            raise ValueError("同名知识已存在，阶段一禁止覆盖；请使用新文件名或独立集合")
         #         插入数据
         res = milvus_client.insert(
             collection_name=collection_name,

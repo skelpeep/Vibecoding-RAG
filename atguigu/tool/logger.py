@@ -3,8 +3,8 @@
 import logging
 import colorlog
 
-logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+logger = logging.getLogger("kb_platform")
+logger.setLevel(logging.INFO)
 
 handler = colorlog.StreamHandler()
 handler.setFormatter(colorlog.ColoredFormatter(

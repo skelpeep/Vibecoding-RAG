@@ -4,14 +4,14 @@ import json
 from langchain.chat_models import init_chat_model
 from pymilvus import DataType
 
-from atguigu.config.config import LLMConfig, MilvusConfig
+from atguigu.config.config import RuntimeConfig, LLMConfig, MilvusConfig
 from atguigu.config.prompt import ITEM_NAME_SYSTEM_PROMPT, ITEM_NAME_USER_PROMPT_TEMPLATE
 from atguigu.import_process.base import NodeBase
 from atguigu.import_process.state import ImportGraphState
-from atguigu.tool.bgem3_client_tool import get_bge_m3_embedding
+from atguigu.tool.embedding_client_tool import get_embeddings
 from atguigu.tool.json_format_tool import json_format
 from atguigu.tool.logger import logger
-from atguigu.tool.milvus_client_tool import get_milvus_client
+from atguigu.tool.milvus_client_tool import get_milvus_client, validate_dense_collection
 
 
 class NodeItemNameRecognition(NodeBase):
@@ -56,6 +56,8 @@ class NodeItemNameRecognition(NodeBase):
         llm = init_chat_model(
             model=LLMConfig.item_model,
             model_provider="openai",
+            timeout=RuntimeConfig.model_timeout,
+            max_retries=1,
             api_key=LLMConfig.openai_api_key,
             base_url=LLMConfig.openai_api_base,
             temperature=LLMConfig.llm_default_temperature,
@@ -75,7 +77,7 @@ class NodeItemNameRecognition(NodeBase):
             item_name = file_title
         return item_name
 
-    def create_milvus_collection(self):
+    def create_milvus_collection(self, dim):
         # 把item_name要向量化保存milvus(原因在于后期检索的时候需要,)
         # 检索的时候第一个节点就是做用户意图识别，用户问问题，问的是和哪个商品相关的问题，我们需要去识别一下（历史消息）
         # 识别出来的意图是哪个商品，需要在存储的商品主体milvus当中去做一个对比（相似性查找）
@@ -106,10 +108,7 @@ class NodeItemNameRecognition(NodeBase):
             ).add_field(
                 field_name="dense_vector",
                 datatype=DataType.FLOAT_VECTOR,
-                dim=1024
-            ).add_field(
-                field_name="sparse_vector",
-                datatype=DataType.SPARSE_FLOAT_VECTOR,
+                dim=dim
             )
 
             index_params = milvus_client.prepare_index_params()
@@ -120,30 +119,16 @@ class NodeItemNameRecognition(NodeBase):
                 params={"nlist": 128, "nprobe": 10},  # 提升效率否则暴力检索虽然准备效率太低
             )
 
-            index_params.add_index(
-                field_name="sparse_vector",
-                index_type="SPARSE_INVERTED_INDEX",  # 暴力检索
-                metric_type="IP",
-                params={
-                    "inverted_index_algo": "DAAT_MAXSCORE",
-                    # 高效的稀疏检索算法
-                    "normalize": True,
-                    # ↑ L2 归一化，让内积 (IP) 等价于余弦相似度
-                    "quantization": "none"
-                    # ↑ 关闭量化，保持原始精度：模型生成的向量已经压缩的一半的精度了（BGE_FP16=1），这里就不再压缩了
-                    # "quantization": "none" → 存储原始向量，不压缩
-                    # "quantization": "sq8" → 存储压缩后的向量（8-bit 量化
-                }
-            )
-
             milvus_client.create_collection(
                 collection_name=collection_name,
                 schema=schema,
                 index_params=index_params,
             )
+        else:
+            validate_dense_collection(milvus_client, collection_name, dim)
         return collection_name, milvus_client
 
-    def insert_data_backup(self, chunks, collection_name, file_title, item_name, milvus_client):
+    def insert_data_backup(self, chunks, collection_name, file_title, item_name, milvus_client, embedding):
         # 准备数据进行插入数据
         # 幂等删除item_name相同的数据
         # milvus要删除数据，需要先去加载一下这个表
@@ -151,15 +136,13 @@ class NodeItemNameRecognition(NodeBase):
         milvus_client.load_collection(collection_name=collection_name)
         safe_item_name = item_name.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"')
         filter_str = f"item_name == '{safe_item_name}'"
-        milvus_client.delete(collection_name=collection_name, filter=filter_str)
+        if milvus_client.query(collection_name=collection_name, filter=filter_str, output_fields=["id"], limit=1):
+            raise ValueError("同名知识已存在，阶段一禁止覆盖；请使用新文件名或独立集合")
         # 插入数据
-        # 通过bgem3去向量化
-        embedding = get_bge_m3_embedding([item_name])
         data = {
             "item_name": item_name,
             "file_title": file_title,
             "dense_vector": embedding.get("dense")[0],
-            "sparse_vector": embedding.get("sparse")[0],
         }
         result = milvus_client.insert(
             collection_name=collection_name,
@@ -181,10 +164,11 @@ class NodeItemNameRecognition(NodeBase):
         item_name = self.get_item_name(content_str, file_title)
 
         #第四大步：创建collection如果还没有的话
-        collection_name, milvus_client = self.create_milvus_collection()
+        embedding = get_embeddings([item_name])
+        collection_name, milvus_client = self.create_milvus_collection(len(embedding["dense"][0]))
 
         #第五大步：插入数据到milvus当中，顺便把item_name回填到每个chunk
-        self.insert_data_backup(chunks, collection_name, file_title, item_name, milvus_client)
+        self.insert_data_backup(chunks, collection_name, file_title, item_name, milvus_client, embedding)
 
         # with open(r"D:\output\hak180产品安全手册\item_name_chunks.json","w",encoding="utf-8") as f:
         #     # json.dump(chunks, f, ensure_ascii=False, indent=4)

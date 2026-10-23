@@ -2,14 +2,14 @@
 
 import json
 from langchain.chat_models import init_chat_model
-from atguigu.config.config import LLMConfig, MilvusConfig
+from atguigu.config.config import RuntimeConfig, LLMConfig, MilvusConfig
 from atguigu.config.prompt import ITEM_NAME_EXTRACT_SYSTEM_PROMPT, ITEM_NAME_EXTRACT_TEMPLATE
 from atguigu.query_process.base import NodeBase
 from atguigu.query_process.state import QueryGraphState
-from atguigu.tool.bgem3_client_tool import get_bge_m3_embedding
+from atguigu.tool.embedding_client_tool import get_embeddings
 from atguigu.tool.json_format_tool import json_format
 from atguigu.tool.logger import logger
-from atguigu.tool.milvus_client_tool import create_reqs, search_hybird
+from atguigu.tool.milvus_client_tool import search_dense
 from atguigu.tool.mongo_client_tool import add_or_update_history, get_recent_history_list, update_item_names_and_query
 
 
@@ -61,29 +61,20 @@ class NodeItemNameConfirm(NodeBase):
         return answer, final_item_names
 
     def get_final_search_item_names(self, item_names):
-        # 对整个item_names向量化，遍历每个item_name进行混合搜索,整理结果
-        # 我们拿到了item_names和rewritten_query，接下来需要把item_names进行向量化，从milvus的item_name表当中进行混合检索
+        # 对整个item_names向量化，遍历每个item_name进行稠密向量搜索,整理结果
+        # 我们拿到了item_names和rewritten_query，接下来需要把item_names进行向量化，从milvus的item_name表当中进行稠密向量检索
         # 看看能不能找到相似度高的item_name,如果找到了，最终的item_name才有可能确定下来
-        # 准备去milvus进行混合检索，所以先去把混合检索的工具函数定义好
-        embeddings = get_bge_m3_embedding(item_names)
+        # 准备去milvus进行稠密向量检索，所以先去把稠密向量检索的工具函数定义好
+        embeddings = get_embeddings(item_names)
         collection_name = MilvusConfig.item_name_collection
         final_search_item_names = []
         for idx, item_name in enumerate(item_names):
             dense_data = embeddings.get("dense")[idx]
-            sparse_data = embeddings.get("sparse")[idx]
 
-            #               准备混合检索
-            reqs = create_reqs(
-                dense_data=dense_data,
-                sparse_data=sparse_data,
-                dense_anns_field="dense_vector",
-                sparse_anns_field="sparse_vector",
-            )
-
-            res = search_hybird(
+            #               准备稠密向量检索
+            res = search_dense(
                 collection_name=collection_name,
-                reqs=reqs,
-                ranker=(0.8, 0.2),
+                dense_data=dense_data,
                 limit=10,
                 output_fields=["item_name"]
             )
@@ -105,6 +96,8 @@ class NodeItemNameConfirm(NodeBase):
         llm = init_chat_model(
             model=LLMConfig.item_model,
             model_provider="openai",
+            timeout=RuntimeConfig.model_timeout,
+            max_retries=1,
             api_key=LLMConfig.openai_api_key,
             base_url=LLMConfig.openai_api_base,
             temperature=LLMConfig.llm_default_temperature,
@@ -170,7 +163,7 @@ class NodeItemNameConfirm(NodeBase):
         answer = ""
         final_item_names = []
         if item_names:
-            # 第三大步：对item_names进行向量化，然后去milvus中进行混合检索，整理成字典列表final_search_item_names
+            # 第三大步：对item_names进行向量化，然后去milvus中进行稠密向量检索，整理成字典列表final_search_item_names
             final_search_item_names = self.get_final_search_item_names(item_names)
 
             # 第四大步：根据final_search_item_names的分数来确定最终的确认名字或者候选的名字，对齐名字及设置最终的answer和最终的item_names

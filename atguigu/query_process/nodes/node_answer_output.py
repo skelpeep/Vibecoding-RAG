@@ -3,7 +3,7 @@ import re
 
 from langchain.chat_models import init_chat_model
 
-from atguigu.config.config import LLMConfig
+from atguigu.config.config import RuntimeConfig, LLMConfig
 from atguigu.config.prompt import ANSWER_PROMPT
 from atguigu.query_process.base import NodeBase
 from atguigu.query_process.state import QueryGraphState
@@ -72,6 +72,8 @@ class NodeAnswerOutput(NodeBase):
         llm = init_chat_model(
             model=LLMConfig.item_model,
             model_provider="openai",
+            timeout=RuntimeConfig.model_timeout,
+            max_retries=1,
             base_url=LLMConfig.openai_api_base,
             api_key=LLMConfig.openai_api_key,
             temperature=0.0,

@@ -1,5 +1,6 @@
 # atguigu/import_process/nodes/node_md_img.py
 import base64
+import uuid
 import os
 import re
 import time
@@ -9,7 +10,7 @@ from pathlib import Path
 from langchain.chat_models import init_chat_model
 from minio.deleteobjects import DeleteObject
 
-from atguigu.config.config import LLMConfig, MinIoConfig
+from atguigu.config.config import RuntimeConfig, LLMConfig, MinIoConfig
 from atguigu.import_process.base import NodeBase
 from atguigu.import_process.state import ImportGraphState
 from atguigu.tool.json_format_tool import json_format
@@ -81,15 +82,21 @@ class NodeMDImg(NodeBase):
         return image_with_context_list
 
     def get_image_with_summary_list(self,image_with_context_list):
+        if not image_with_context_list:
+            return []
+        if not (LLMConfig.vl_base_url and LLMConfig.vl_api_key and LLMConfig.vl_model):
+            raise RuntimeError("请配置独立视觉服务的 VL_BASE_URL、VL_API_KEY 和 VL_MODEL")
         #       根据上面的图片列表，进行大模型调用真正生成摘要
         dq = deque(maxlen=30)
         current_time = time.time()
 
         llm = init_chat_model(
-            model=LLMConfig.llm_default_model,
+            model=LLMConfig.vl_model,
             model_provider="openai",
-            base_url=LLMConfig.openai_api_base,
-            api_key=LLMConfig.openai_api_key,
+            timeout=RuntimeConfig.model_timeout,
+            max_retries=1,
+            base_url=LLMConfig.vl_base_url,
+            api_key=LLMConfig.vl_api_key,
             temperature=LLMConfig.llm_default_temperature,
         )
 
@@ -150,27 +157,11 @@ class NodeMDImg(NodeBase):
         return image_with_summary_list
 
     def get_image_with_summary_and_url_list(self,image_with_summary_list):
-        upload_dir = MinIoConfig.minio_img_dir  # 上传到哪个目录
+        if not image_with_summary_list:
+            return []
+        # A new namespace for each run: never delete another document's images.
+        upload_dir = f"{MinIoConfig.minio_img_dir}/{uuid.uuid4().hex}"
         minio_client = get_minio_client()
-        # 幂等性删除这个目录当中的图片
-        # 1、拿到桶当中这个目录当重点的所有老图片(prefix=upload_dir代表桶下面的目录，不到文件)
-        old_image_list = minio_client.list_objects(
-            bucket_name=MinIoConfig.minio_bucket_name,
-            prefix=upload_dir,
-            recursive=True
-        )
-        # for item in old_image_list:
-        #     print(item)
-        # 2、调用api批量删除老的图片,delete_object_list这个参数要求必须是DeleteObject对象列表,我们就得把上面的图片列表转化成这个列表
-        delete_image_list = [DeleteObject(obj.object_name) for obj in old_image_list]
-        # 删除的时候参考官网完整代码，返回的是一个迭代器，迭代器必须遍历才能真正的去删除
-        errors = minio_client.remove_objects(
-            bucket_name=MinIoConfig.minio_bucket_name,
-            delete_object_list=delete_image_list
-        )
-        for error in errors:
-            logger.error("error occurred when deleting object", error)
-
         # 准备上传图片
         image_with_summary_and_url_list = []
         for image_with_summary in image_with_summary_list:
@@ -179,7 +170,7 @@ class NodeMDImg(NodeBase):
                 object_name=upload_dir + "/" + image_with_summary.get("image_name"),  # 除了桶之外的路径一直到图片
                 file_path=image_with_summary.get("image_path")
             )
-            url = f"http://{MinIoConfig.minio_endpoint}/{MinIoConfig.minio_bucket_name}/{upload_dir}/{image_with_summary.get("image_name")}"
+            url = f"{MinIoConfig.public_base_url}/{MinIoConfig.minio_bucket_name}/{upload_dir}/{image_with_summary.get("image_name")}"
             image_with_summary_and_url_list.append({
                 **image_with_summary,
                 "url": url

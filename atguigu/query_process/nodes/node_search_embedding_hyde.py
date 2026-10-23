@@ -3,14 +3,14 @@ import json
 
 from langchain.chat_models import init_chat_model
 
-from atguigu.config.config import LLMConfig, MilvusConfig
+from atguigu.config.config import RuntimeConfig, LLMConfig, MilvusConfig
 from atguigu.config.prompt import HYDE_PROMPT
 from atguigu.query_process.base import NodeBase
 from atguigu.query_process.state import QueryGraphState
-from atguigu.tool.bgem3_client_tool import get_bge_m3_embedding
+from atguigu.tool.embedding_client_tool import get_embeddings
 from atguigu.tool.json_format_tool import json_format
 from atguigu.tool.logger import logger
-from atguigu.tool.milvus_client_tool import create_reqs, search_hybird
+from atguigu.tool.milvus_client_tool import search_dense
 
 
 class NodeSearchEmbeddingHyde(NodeBase):
@@ -27,7 +27,7 @@ class NodeSearchEmbeddingHyde(NodeBase):
         item_names, rewritten_query = self.get_rewritten_query(state)
         # 生成假设性答案并合并原始问题
         merged_query = self.get_hyde_answer(rewritten_query)
-        # 混合搜索获取切片
+        # 稠密向量搜索获取切片
         hyde_embedding_chunks = self.get_hyde_embedding_chunks(item_names, merged_query)
 
         return {
@@ -35,28 +35,20 @@ class NodeSearchEmbeddingHyde(NodeBase):
         }
 
     def get_hyde_embedding_chunks(self, item_names, merged_query):
-        embeddings = get_bge_m3_embedding([merged_query])
+        embeddings = get_embeddings([merged_query])
         collection_name = MilvusConfig.chunks_collection
         dense_data = embeddings.get("dense")[0]
-        sparse_data = embeddings.get("sparse")[0]
         # 整理item_name
         # item_names = [
         #     item.replace("\\", '\\\\').replace("'", "\\'").replace('"', '\\"')
         #     for item in item_names
         # ]
-        # 混合搜索添加标量字段过滤
+        # 稠密向量搜索添加标量字段过滤
         expr = f"item_name in {json.dumps(item_names,ensure_ascii=False)}"  # 要求in 后面的列表也是一个字符串，json序列化是最简单的
-        reqs = create_reqs(
-            dense_data=dense_data,
-            sparse_data=sparse_data,
-            dense_anns_field="dense_vector",
-            sparse_anns_field="sparse_vector",
-            expr=expr  # 过滤自己的数据，不要其它不存在item_names里面的数据
-        )
-        res = search_hybird(
+        res = search_dense(
             collection_name=collection_name,
-            reqs=reqs,
-            ranker=(0.8, 0.2),
+            dense_data=dense_data,
+            expr=expr,
             output_fields=["id", "title", "file_title", "content", "item_name"],
             limit=10,
         )
@@ -77,6 +69,8 @@ class NodeSearchEmbeddingHyde(NodeBase):
         llm = init_chat_model(
             model=LLMConfig.item_model,
             model_provider="openai",
+            timeout=RuntimeConfig.model_timeout,
+            max_retries=1,
             api_key=LLMConfig.openai_api_key,
             base_url=LLMConfig.openai_api_base,
             temperature=LLMConfig.llm_default_temperature,

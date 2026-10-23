@@ -21,6 +21,11 @@ _tasks_duration: Dict[str, Dict[str, float]] = defaultdict(dict)
 # key: task_id
 # value: status 字符串（如 processing/completed/failed）
 _tasks_status: Dict[str, str] = {}
+_tasks_errors: Dict[str, str] = {}
+
+
+def set_task_error(task_id: str, message: str) -> None:
+    _tasks_errors[task_id] = message
 
 # key: task_id
 # value: 任务结果（例如 query 的 answer）
@@ -162,7 +167,8 @@ def get_task_info(task_id: str) -> Dict[str, any]:
         "status": get_task_status(task_id),
         "running_list": get_running_task_list(task_id),
         "done_list": get_done_task_list(task_id),
-        "durations": get_node_durations(task_id)
+        "durations": get_node_durations(task_id),
+        "error": _tasks_errors.get(task_id)
     }
 
 
@@ -175,10 +181,10 @@ def create_queue(task_id: str):
 
 
 def put_data(task_id,event,data):
-    while not queue_dict.get(task_id):
-        time.sleep(1)
     q = queue_dict.get(task_id)
-    q.put({"event":event,"data":data})
+    # A disconnected browser must not block a LangGraph worker forever.
+    if q is not None:
+        q.put({"event":event,"data":data})
 
 
 def get_data(task_id):

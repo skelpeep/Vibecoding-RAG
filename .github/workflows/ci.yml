@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-scripts:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Windows PowerShell 5.1 syntax and encoding
+        shell: powershell
+        run: ./scripts/check-powershell.ps1
+      - name: Check PowerShell 7 syntax and encoding
+        shell: pwsh
+        run: ./scripts/check-powershell.ps1
+
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check repository contents and history
+        run: python scripts/check_repository.py --history
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.0'
+      - name: Install locked dependencies
+        run: uv sync --locked
+      - name: Run isolated backend tests
+        run: uv run --locked pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Type check and build
+        run: npm run build

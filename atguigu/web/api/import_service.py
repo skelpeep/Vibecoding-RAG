@@ -1,112 +1,88 @@
-import shutil
+"""Original upload contract with portable paths and explicit terminal failures."""
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
-import fastapi
-import uvicorn
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks
-from starlette.middleware.cors import CORSMiddleware
-from datetime import datetime
+from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Depends
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 
-from atguigu.config.config import MinIoConfig
-from atguigu.import_process.main_graph import MainGraphRunner
+from atguigu.config.config import PROJECT_ROOT, RuntimeConfig, MinIoConfig
 from atguigu.tool.logger import logger
-from atguigu.tool.minio_client_tool import get_minio_client
-from atguigu.tool.task_utils import add_running_task, add_done_task, get_task_info, update_task_status, \
-    TASK_STATUS_PROCESSING, TASK_STATUS_COMPLETED, TASK_STATUS_FAILED
+from atguigu.business.security import legacy_data_closed
+from atguigu.tool.task_utils import (add_running_task, add_done_task, get_task_info,
+    update_task_status, set_task_error, TASK_STATUS_PROCESSING, TASK_STATUS_COMPLETED, TASK_STATUS_FAILED)
 
-app = FastAPI(
-    title="掌柜智库导入模块对应的接口服务",
-    description="导入模块各个api接口服务",
-    version="0.0.1"
-)
+app = FastAPI(title="掌柜智库导入基线", version="0.1.0")
+app.add_middleware(CORSMiddleware, allow_origins=RuntimeConfig.cors_origins,
+                   allow_credentials=False, allow_methods=["GET", "POST"], allow_headers=["*"])
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+@app.get("/", include_in_schema=False)
+def page():
+    return FileResponse(PROJECT_ROOT / "atguigu/web/page/import.html")
 
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "import", "dependencies": "not_checked", "task_storage": "memory"}
 
-# 执行graph的后台任务函数
-def run_main_graph(task_id:str,local_dir:str,local_file_path:str):
+def run_main_graph(task_id: str, local_dir: str, local_file_path: str):
     try:
-        init_state = {
-            "task_id": task_id,
-            "local_dir": local_dir,
-            "local_file_path": local_file_path
-        }
-        update_task_status(task_id,TASK_STATUS_PROCESSING)
-        MainGraphRunner.create_and_run(init_state)
+        from atguigu.tool.minio_client_tool import get_minio_client
+        from atguigu.import_process.main_graph import MainGraphRunner
+        add_running_task(task_id, "backup_file")
+        get_minio_client().fput_object(
+            bucket_name=MinIoConfig.minio_bucket_name,
+            object_name=f"source/{task_id}/{Path(local_file_path).name}", file_path=local_file_path)
+        add_done_task(task_id, "backup_file")
+        MainGraphRunner.create_and_run({"task_id": task_id, "local_dir": local_dir, "local_file_path": local_file_path})
         update_task_status(task_id, TASK_STATUS_COMPLETED)
-    except Exception as e:
-        logger.error(f"执行graph异常，task_id={task_id}")
+    except Exception as exc:
+        # No exception text: SDK messages can contain signed URLs or credentials.
+        logger.error("导入任务失败 task_id=%s type=%s", task_id, type(exc).__name__)
+        set_task_error(task_id, f"导入失败（{type(exc).__name__}），请检查模型与存储配置，并运行 scripts/doctor.py")
         update_task_status(task_id, TASK_STATUS_FAILED)
 
-
-@app.post("/upload")
-async def upload_file(background_tasks:BackgroundTasks, file: UploadFile = File(...,description="上传的文件对象")):
-    #第一步生成task_id  uuid
+@app.post("/upload", dependencies=[Depends(legacy_data_closed)])
+async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    filename = file.filename or ""
+    if not filename or filename in {".", ".."} or any(c in filename for c in '/\\:\x00'):
+        await file.close()
+        raise HTTPException(400, "文件名不合法")
+    if Path(filename).suffix.lower() not in {".pdf", ".md"}:
+        await file.close()
+        raise HTTPException(415, "阶段一原解析器仅支持 PDF 和 Markdown")
     task_id = str(uuid.uuid4())
+    local_dir = RuntimeConfig.data_dir / datetime.now(timezone.utc).strftime("%Y%m%d") / task_id
+    local_dir.mkdir(parents=True, exist_ok=False)
+    target = local_dir / filename
+    size = 0
+    try:
+        with target.open("xb") as out:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > RuntimeConfig.upload_max_bytes:
+                    raise HTTPException(413, "文件超过 UPLOAD_MAX_MB 限制")
+                out.write(chunk)
+        if size == 0:
+            raise HTTPException(400, "文件不能为空")
+    except Exception:
+        target.unlink(missing_ok=True)
+        local_dir.rmdir()
+        raise
+    finally:
+        await file.close()
+    update_task_status(task_id, TASK_STATUS_PROCESSING)
+    add_done_task(task_id, "upload_file")
+    background_tasks.add_task(run_main_graph, task_id, str(local_dir), str(target))
+    return {"task_id": task_id, "file_size": size, "file_name": filename}
 
+@app.get("/status/{task_id}", dependencies=[Depends(legacy_data_closed)])
+def get_status(task_id: str):
+    result = get_task_info(task_id)
+    if not result["status"]:
+        raise HTTPException(404, "任务不存在或进程已经重启")
+    return result
 
-    # 上传文件的状态追踪
-    add_running_task(task_id,"upload_file") #本质就是把upload_file放入正在执行的列表的中
-
-
-
-    #接收文件并且保准到指定位置
-    local_dir = rf"D:\output\{datetime.now().strftime('%Y%m%d')}"
-    local_dir_obj = Path(local_dir)
-    if not local_dir_obj.exists():
-        local_dir_obj.mkdir(parents=True,exist_ok=True)
-    local_file_path = str(local_dir_obj / file.filename)
-
-    with open(local_file_path, "wb") as f:
-        shutil.copyfileobj(file.file, f, 1024*1024)
-    logger.info(f"文件上传成功，保存路径为：{local_file_path}")
-
-
-
-    #备份文件到minio
-    minio_client = get_minio_client()
-    minio_client.fput_object(
-        bucket_name=MinIoConfig.minio_bucket_name,
-        object_name=f"pdf_file/{datetime.now().strftime('%Y%m%d')}/{task_id}/{file.filename}",
-        file_path=local_file_path
-    )
-    logger.info(f"文件上传到minio成功，保存路径为：pdf_file/{datetime.now().strftime('%Y%m%d')}/{task_id}/{file.filename}")
-
-    # 更新上传文件的状态追踪
-    add_done_task(task_id,"upload_file")#本质就是把upload_file从正在执行的列表中移除，添加到已完成列表中
-
-
-
-
-
-    # 调用后台任务，链接graph，执行整个graph任务
-    background_tasks.add_task(run_main_graph,task_id=task_id,local_dir=local_dir,local_file_path=local_file_path)
-
-
-    #返回响应 最主要的就是task_id
-    # 这里我们返数据其实主要的极速task_id，其余的数据我们要和前端页面对，前端页面需要但是没有，我们就要返，如果前端需要但是已经存在了
-    # 说明前端人员已经把这个活干了，我们就不需要再返了
-    return {"task_id": task_id,"file_size":file.size,"file_name":file.filename}
-
-
-
-
-
-@app.get("/status/{task_id}")
-async def get_status(task_id: str = fastapi.Path(...,description="任务ID")):
-    return get_task_info(task_id)
-
-
-
-
-
-if __name__ == '__main__':
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host=RuntimeConfig.host, port=RuntimeConfig.import_port)

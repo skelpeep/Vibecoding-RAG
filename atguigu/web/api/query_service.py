@@ -1,151 +1,99 @@
+"""Original local UI reference. Legacy data routes are closed since stage 2."""
+import asyncio
 import json
-import time
 import uuid
-from queue import Queue
+from queue import Empty
 
-import uvicorn
-from fastapi import FastAPI, Path, Body, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, Depends
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from starlette.middleware.cors import CORSMiddleware
-from starlette.responses import StreamingResponse
+from pymongo.errors import PyMongoError
 
-from atguigu.query_process.main_graph import MainGraphRunner
+from atguigu.config.config import PROJECT_ROOT, RuntimeConfig
+from atguigu.tool.logger import logger
+from atguigu.business.security import legacy_data_closed
 from atguigu.tool.mongo_client_tool import get_recent_history_list, clear_history
-from atguigu.tool.task_utils import update_task_status, TASK_STATUS_PROCESSING, get_task_info, TASK_STATUS_COMPLETED, \
-    TASK_STATUS_FAILED, create_queue, put_data, get_data
+from atguigu.tool.task_utils import (update_task_status, set_task_error, get_task_info,
+    TASK_STATUS_PROCESSING, TASK_STATUS_COMPLETED, TASK_STATUS_FAILED, create_queue, put_data, queue_dict)
 
-app = FastAPI(
-    title="检索模块对应的接口",
-    description="检索模块对应的前端接口",
-    version="0.1.0"
-)
+app = FastAPI(title="掌柜智库检索基线", version="0.1.0")
+app.add_middleware(CORSMiddleware, allow_origins=RuntimeConfig.cors_origins,
+                   allow_credentials=False, allow_methods=["GET", "POST", "DELETE"], allow_headers=["*"])
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+@app.get("/", include_in_schema=False)
+def page():
+    return FileResponse(PROJECT_ROOT / "atguigu/web/page/chat.html")
 
-
-
-# 第一步：写健康检查接口
 @app.get("/health")
-async def health():
-    # 随便返回什么都可以，因为前端只是在判断请求是不是成功 response.ok为true ok只要状态是200即可
-    return {"aa": "bb"}
+def health():
+    return {"status": "ok", "service": "query", "dependencies": "not_checked", "task_storage": "memory"}
 
+@app.get("/history/{session_id}", dependencies=[Depends(legacy_data_closed)])
+def get_history(session_id: str):
+    try:
+        history = get_recent_history_list(session_id)
+    except PyMongoError as exc:
+        raise HTTPException(503, "MongoDB 历史服务不可用，请运行 scripts/doctor.py") from exc
+    items = [{**item, "_id": str(item["_id"])} for item in history]
+    items.sort(key=lambda item: item.get("ts") or 0)
+    return {"items": items}
 
-#第二步：写历史记录查询接口
-@app.get("/history/{session_id}")
-async def get_history(session_id: str = Path(..., description="会话ID")):
-    print(session_id)
-#     获取历史记录，返回即可
-    history_list = get_recent_history_list(session_id)
-    history_list = [
-        {
-            "_id":str(item.get("_id")),
-            "role":item.get("role",""),
-            "text":item.get("text",""),
-            "rewritten_query":item.get("rewritten_query",""),
-            "item_names":item.get("item_names",""),
-            "ts":item.get("ts",""),
-            "session_id":item.get("session_id","")
-        }
-        for item in history_list
-    ]
-    history_list.sort(key=lambda a: a.get("ts"))
-    return {"items":history_list} #返回数据的时候要看前端页面写的是什么，前端已经完成的情况下
-
-#第三步：情况历史记录
-@app.delete("/history/{session_id}")
-async def delete_history(session_id: str = Path(..., description="会话ID")):
-    clear_history(session_id)
-    return {"msg":"删除成功"}
-
-#第五步：书写后台任务调用graph
-# queue_dict = {}
+@app.delete("/history/{session_id}", dependencies=[Depends(legacy_data_closed)])
+def delete_history(session_id: str):
+    try:
+        clear_history(session_id)
+    except PyMongoError as exc:
+        raise HTTPException(503, "MongoDB 历史服务不可用") from exc
+    return {"msg": "删除成功"}
 
 def run_main_graph(task_id, original_query, session_id):
-    # 造队列
-    # if not queue_dict.get(task_id):
-    #     queue_dict[task_id] = Queue()
-    # q = queue_dict[task_id]
-
-    create_queue(task_id) #创建队列
-
     try:
-        init_state = {
-            "task_id": task_id,
-            "original_query": original_query,
-            "session_id": session_id,
-            # "q":q
-        }
-        # 更新总状态，放到队列，sse后期就可以从队列当中取出更新的数据状态推送给前端
-        update_task_status(task_id, TASK_STATUS_PROCESSING)
-        # q.put({"event":"progress","data":get_task_info(task_id)})
-        put_data(task_id,event="progress",data=get_task_info(task_id))
-        MainGraphRunner.create_and_run(init_state)
-        # 更新总状态，放到队列，sse后期就可以从队列当中取出更新的数据状态推送给前端
+        from atguigu.query_process.main_graph import MainGraphRunner
+        put_data(task_id, "progress", get_task_info(task_id))
+        MainGraphRunner.create_and_run({"task_id": task_id, "original_query": original_query, "session_id": session_id})
         update_task_status(task_id, TASK_STATUS_COMPLETED)
-        # q.put({"event": "progress", "data": get_task_info(task_id)})
-        put_data(task_id, event="progress", data=get_task_info(task_id))
-    except Exception as e:
-        # 更新总状态，放到队列，sse后期就可以从队列当中取出更新的数据状态推送给前端
+        put_data(task_id, "progress", get_task_info(task_id))
+        put_data(task_id, "done", get_task_info(task_id))
+    except Exception as exc:
+        logger.error("查询任务失败 task_id=%s type=%s", task_id, type(exc).__name__)
+        set_task_error(task_id, f"查询失败（{type(exc).__name__}），请检查模型与存储配置，并运行 scripts/doctor.py")
         update_task_status(task_id, TASK_STATUS_FAILED)
-        # q.put({"event": "error", "data": get_task_info(task_id)})
-        put_data(task_id, event="error", data=get_task_info(task_id))
-        raise e
+        put_data(task_id, "progress", get_task_info(task_id))
+        put_data(task_id, "error", get_task_info(task_id))
 
-
-
-#第四步：查询接口
 class QueryParams(BaseModel):
-    query: str = Field(..., description="查询内容")
-    session_id: str = Field(..., description="会话ID")
+    query: str = Field(min_length=1, max_length=10000)
+    session_id: str = Field(min_length=1, max_length=128)
 
-@app.post("/query")
-async def query(background_tasks:BackgroundTasks,query_params: QueryParams = Body(...,description="查询请求体参数")):
-    # 创建task_id 后期需要追踪
+@app.post("/query", dependencies=[Depends(legacy_data_closed)])
+def query(background_tasks: BackgroundTasks, query_params: QueryParams):
     task_id = str(uuid.uuid4())
-    original_query = query_params.query
-    session_id = query_params.session_id
+    create_queue(task_id)
+    update_task_status(task_id, TASK_STATUS_PROCESSING)
+    background_tasks.add_task(run_main_graph, task_id, query_params.query, query_params.session_id)
+    return {"task_id": task_id, "original_query": query_params.query, "session_id": query_params.session_id}
 
-    # 第五步：调后台接口任务去执行graph
-    background_tasks.add_task(run_main_graph, task_id, original_query, session_id)
+@app.get("/stream/{task_id}", dependencies=[Depends(legacy_data_closed)])
+def stream(request: Request, task_id: str):
+    queue = queue_dict.get(task_id)
+    if queue is None:
+        raise HTTPException(404, "流任务不存在或已结束")
+    async def generate():
+        try:
+            while not await request.is_disconnected():
+                try:
+                    item = queue.get_nowait()
+                except Empty:
+                    await asyncio.sleep(0.1)
+                    continue
+                yield f"event: {item['event']}\ndata: {json.dumps(item['data'], ensure_ascii=False)}\n\n"
+                if item["event"] in {"error", "done"}:
+                    break
+        finally:
+            queue_dict.pop(task_id, None)
+    return StreamingResponse(generate(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-    return {
-        "task_id": task_id,
-        "original_query": original_query,
-        "session_id": session_id
-    }
-
-
-
-def gennerate_stream(task_id):
-    # while not queue_dict.get(task_id):
-    #     time.sleep(1)
-    # q = queue_dict[task_id]
-    while True:
-        item = get_data(task_id)
-        time.sleep(0.1)
-        yield f"event: {item.get("event")}\n"
-        yield f"data: {json.dumps(item.get("data"),ensure_ascii=False)}\n\n"
-
-
-@app.get("/stream/{task_id}")
-async def stream(task_id: str = Path(..., description="任务ID")):
-    return StreamingResponse(gennerate_stream(task_id), media_type="text/event-stream")
-
-
-
-
-
-
-
-
-
-if __name__ == '__main__':
-    uvicorn.run(app, host="0.0.0.0", port=8001)
-
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host=RuntimeConfig.host, port=RuntimeConfig.query_port)

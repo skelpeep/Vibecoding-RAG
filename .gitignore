@@ -1,2 +1,52 @@
-.venv
+# Local credentials and application data
 .env
+.env.*
+!.env.example
+var/
+*.pem
+*.key
+*.p12
+*.pfx
+deploy/vm/redis.conf
+
+# Python environments, caches and packages
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.egg-info/
+build/
+dist/
+
+# Frontend dependencies and generated output
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
+
+# Local acceptance evidence; keep only the explanatory index in Git
+docs/evidence/*
+!docs/evidence/README.md
+.taste-skill/*
+!.taste-skill/*.md
+!.taste-skill/direction.json
+
+# Editor, operating system and temporary files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.log
+*.tmp
+*.swp
+*~

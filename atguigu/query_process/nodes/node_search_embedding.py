@@ -4,15 +4,15 @@ import json
 from atguigu.config.config import MilvusConfig
 from atguigu.query_process.base import NodeBase
 from atguigu.query_process.state import QueryGraphState
-from atguigu.tool.bgem3_client_tool import get_bge_m3_embedding
+from atguigu.tool.embedding_client_tool import get_embeddings
 from atguigu.tool.json_format_tool import json_format
 from atguigu.tool.logger import logger
-from atguigu.tool.milvus_client_tool import create_reqs, search_hybird
+from atguigu.tool.milvus_client_tool import search_dense
 
 
 class NodeSearchEmbedding(NodeBase):
      """
-    节点功能：基于已确认主体名+改写后的用户问题，执行Milvus向量数据库混合检索
+    节点功能：基于已确认主体名+改写后的用户问题，执行Milvus稠密向量检索
     """
 
      # 覆盖基类的 name 属性，标识节点名称
@@ -29,32 +29,23 @@ class NodeSearchEmbedding(NodeBase):
              logger.error("item_names必须有值")
              raise ValueError("item_names必须有值")
 
-         embeddings = get_bge_m3_embedding([rewritten_query])
+         embeddings = get_embeddings([rewritten_query])
          collection_name = MilvusConfig.chunks_collection
          dense_data = embeddings.get("dense")[0]
-         sparse_data = embeddings.get("sparse")[0]
 
          # 整理item_name json.dumps(item_names) 里面已经帮我们把一些特殊字符处理过了，所以手动就可以免了
          # item_names = [
          #     item.replace("\\",'\\\\').replace("'","\\'").replace('"', '\\"')
          #     for item in item_names
          # ]
-         # 混合搜索添加标量字段过滤
+         # 稠密向量搜索添加标量字段过滤
          expr = f"item_name in {json.dumps(item_names,ensure_ascii=False)}" #要求in 后面的列表也是一个字符串，json序列化是最简单的
 
 
-         reqs = create_reqs(
-             dense_data=dense_data,
-             sparse_data=sparse_data,
-             dense_anns_field="dense_vector",
-             sparse_anns_field="sparse_vector",
-             expr=expr  #过滤自己的数据，不要其它不存在item_names里面的数据
-         )
-
-         res = search_hybird(
+         res = search_dense(
              collection_name=collection_name,
-             reqs=reqs,
-             ranker=(0.8,0.2),
+             dense_data=dense_data,
+             expr=expr,
              output_fields=["id","title","file_title","content","item_name"],
              limit=10,
          )

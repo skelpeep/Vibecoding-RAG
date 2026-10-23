@@ -1,0 +1,9 @@
+# Actual redis.conf on the VM contains a generated password and is not committed.
+bind 0.0.0.0
+protected-mode yes
+port 6379
+dir /data
+appendonly yes
+maxmemory 96mb
+maxmemory-policy noeviction
+requirepass REPLACE_WITH_REDIS_PASSWORD_FROM_VM_ENV

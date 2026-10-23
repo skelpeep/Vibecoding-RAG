@@ -1,0 +1,42 @@
+# Supplement existing Milvus/MinIO/MySQL on the user's VM, without recreating them.
+name: kb-platform
+services:
+  mongodb:
+    image: mongo:7.0.18
+    restart: unless-stopped
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25", "--bind_ip_all"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: kb_mongo_admin
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?required}
+      MONGO_INITDB_DATABASE: kb_stage1
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:?required}
+    ports: ["${VM_BIND_IP:-192.168.100.188}:27017:27017"]
+    volumes:
+      - mongo-data:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/10-kb-user.js:ro
+    mem_limit: 768m
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'quit(db.adminCommand({ping:1}).ok ? 0 : 1)'"]
+      interval: 15s
+      timeout: 10s
+      retries: 6
+      start_period: 45s
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?required}
+    ports: ["${VM_BIND_IP:-192.168.100.188}:6380:6379"]
+    volumes:
+      - redis-data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    mem_limit: 192m
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+volumes:
+  mongo-data:
+  redis-data:

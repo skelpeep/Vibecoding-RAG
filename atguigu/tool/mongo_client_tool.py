@@ -6,13 +6,13 @@ import time
 
 from pymongo import MongoClient
 
-from atguigu.config.config import MongoConfig
+from atguigu.config.config import MongoConfig, RuntimeConfig
 
 mongo_client = None
 def get_mongo_client():
     global mongo_client
-    if not mongo_client:
-        mongo_client = MongoClient(MongoConfig.mongo_url)
+    if mongo_client is None:
+        mongo_client = MongoClient(MongoConfig.mongo_url, serverSelectionTimeoutMS=int(RuntimeConfig.service_timeout * 1000), connectTimeoutMS=int(RuntimeConfig.service_timeout * 1000))
     return mongo_client
 
 collection = None
@@ -25,7 +25,7 @@ def get_mongo_collection():
         db = mongo_client[MongoConfig.mongo_db_name]
     if collection is None:
         collection = db["chat_history"]
-        collection.create_index([("_id", 1),("ts",-1),("session_id",1)])
+        collection.create_index([("session_id", 1), ("ts", -1)])
     return collection
 
 

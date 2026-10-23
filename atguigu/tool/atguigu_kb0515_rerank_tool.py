@@ -1,41 +1,44 @@
-import dashscope
-from http import HTTPStatus
+"""EMRank /v1/rerank adapter, returning the graph's index/score format."""
+import math
 
-from atguigu.config.config import RerankConfig
-from atguigu.tool.logger import logger
+import httpx
 
-# 以下为华北2（北京）地域的配置，调用时请将{WorkspaceId}替换为真实的业务空间ID，各地域的配置不同。
-dashscope.base_http_api_url = RerankConfig.rerank_base_url
-dashscope.api_key = RerankConfig.rerank_api_key
-
-def text_rerank(query,texts,limit=10):
-    try:
-        resp = dashscope.TextReRank.call(
-            model="qwen3-rerank",
-            query=query,
-            documents=texts,
-            top_n=limit,
-            return_documents=False, #因为我们本身是有原本的文档，如果这里再去反一下，token消耗量大，所以这里就不反了
-            instruct="Given a web search query, retrieve relevant passages that answer the query."
-            #instruct有两种模式，看你侧重要干啥选择不同的模式，参考官网
-        )
-        if resp.status_code == HTTPStatus.OK:
-            # print(resp.output.results)
-            return [
-                {
-                    "index":item.index,
-                    "score": item.relevance_score
-                }
-                for item in resp.output.results
-            ]
-
-        else:
-            logger.error("重排序请求有问题")
-            raise Exception(f"重排序请求有问题{resp.status_code}")
-    except Exception as e:
-        logger.error(e)
-        raise e
+from atguigu.config.config import RerankConfig, RuntimeConfig
 
 
-if __name__ == '__main__':
-    print(text_rerank("你是谁", ["你是谁", "我是AI", "我是机器人"], 2))
+def text_rerank(query, texts, limit=10):
+    if not texts:
+        return []
+    if not query or limit < 1:
+        raise ValueError("重排序必须提供问题，且 limit 必须大于 0")
+    if not (RerankConfig.rerank_base_url and RerankConfig.rerank_api_key):
+        raise RuntimeError("请配置 RERANK_BASE_URL 和 RERANK_API_KEY")
+
+    response = httpx.post(
+        f"{RerankConfig.rerank_base_url}/rerank",
+        headers={"Authorization": f"Bearer {RerankConfig.rerank_api_key}"},
+        json={
+            "model": RerankConfig.model,
+            "query": query,
+            "documents": texts,
+            "top_n": min(limit, len(texts)),
+            "return_documents": False,
+        },
+        timeout=RuntimeConfig.model_timeout,
+    )
+    response.raise_for_status()
+    results = response.json().get("results")
+    if not isinstance(results, list) or not results or len(results) > min(limit, len(texts)):
+        raise ValueError("Rerank 接口返回结果无效")
+    ranked, seen = [], set()
+    for item in results:
+        if not isinstance(item, dict):
+            raise ValueError("Rerank 接口返回格式无效")
+        index, score = item.get("index"), item.get("relevance_score")
+        if type(index) is not int or not 0 <= index < len(texts) or index in seen:
+            raise ValueError("Rerank 接口返回的文档索引无效或重复")
+        if type(score) not in (int, float) or not math.isfinite(score):
+            raise ValueError("Rerank 接口返回的相关性分数无效")
+        seen.add(index)
+        ranked.append({"index": index, "score": float(score)})
+    return sorted(ranked, key=lambda item: item["score"], reverse=True)

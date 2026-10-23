@@ -2,7 +2,6 @@
 import asyncio
 import json
 
-from agents.mcp import MCPServerStreamableHttp
 from atguigu.config.config import McpConfig
 from atguigu.query_process.base import NodeBase
 from atguigu.query_process.state import QueryGraphState
@@ -18,6 +17,8 @@ class NodeWebSearchMcp(NodeBase):
     name: str = "node_web_search_mcp"
 
     def process(self, state: QueryGraphState):
+        if not McpConfig.enabled:
+            return {"web_search_docs": []}
         rewritten_query = state.get("rewritten_query")
         if not rewritten_query:
             logger.error("rewritten_query不能为空")
@@ -42,6 +43,7 @@ class NodeWebSearchMcp(NodeBase):
 
 
     async def mcp_run(self,query,limit=10) -> None:
+        from agents.mcp import MCPServerStreamableHttp
         token = McpConfig.api_key
         async with MCPServerStreamableHttp(
             name="websearch",

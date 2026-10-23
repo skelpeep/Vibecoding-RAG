@@ -1,49 +1,23 @@
-import json
-import os
-
 from minio import Minio
-
-from atguigu.config.config import MinIoConfig
-from atguigu.tool.logger import logger
+from urllib3 import PoolManager, Timeout
+from atguigu.config.config import MinIoConfig, RuntimeConfig
 
 minio_client = None
 
 def get_minio_client():
     global minio_client
-    if not minio_client:
-        try:
-            minio_client = Minio(
-                endpoint=MinIoConfig.minio_endpoint,
-                access_key=MinIoConfig.minio_access_key,
-                secret_key=MinIoConfig.minio_secret_key,
-                secure=False, #禁用https
-            )
-
-            bucket_name = MinIoConfig.minio_bucket_name
-            # 创建桶
-            if not minio_client.bucket_exists(bucket_name=bucket_name):
-                minio_client.make_bucket(bucket_name=bucket_name)
-
-            # 设置权限 读公开 写认证
-            policy = {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Principal": {"AWS": "*"},
-                        "Action": ["s3:GetBucketLocation", "s3:ListBucket"],
-                        "Resource": f"arn:aws:s3:::{bucket_name}",
-                    },
-                    {
-                        "Effect": "Allow",
-                        "Principal": {"AWS": "*"},
-                        "Action": "s3:GetObject",
-                        "Resource": f"arn:aws:s3:::{bucket_name}/*",
-                    },
-                ],
-            }
-            minio_client.set_bucket_policy(bucket_name=bucket_name, policy=json.dumps(policy))
-        except Exception as e:
-            logger.error("minio客户端初始化失败")
-            raise e
+    if minio_client is None:
+        if not MinIoConfig.minio_access_key or not MinIoConfig.minio_secret_key:
+            raise RuntimeError("请配置 MINIO_ACCESS_KEY 和 MINIO_SECRET_KEY")
+        client = Minio(
+            endpoint=MinIoConfig.minio_endpoint,
+            access_key=MinIoConfig.minio_access_key,
+            secret_key=MinIoConfig.minio_secret_key,
+            secure=MinIoConfig.secure,
+            http_client=PoolManager(timeout=Timeout(total=RuntimeConfig.service_timeout), retries=False),
+        )
+        if not client.bucket_exists(MinIoConfig.minio_bucket_name):
+            client.make_bucket(MinIoConfig.minio_bucket_name)
+        # Preserve existing bucket policy; never make existing files public on startup.
+        minio_client = client
     return minio_client

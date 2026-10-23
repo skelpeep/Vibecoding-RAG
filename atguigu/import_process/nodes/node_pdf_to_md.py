@@ -1,7 +1,7 @@
 # atguigu/import_process/nodes/node_pdf_to_md.py
 
 from pathlib import Path
-from atguigu.config.config import MineruConfig
+from atguigu.config.config import MineruConfig, RuntimeConfig
 from atguigu.import_process.base import NodeBase
 from atguigu.import_process.state import ImportGraphState
 from atguigu.tool.json_format_tool import json_format
@@ -43,6 +43,8 @@ class NodePDFToMD(NodeBase):
     def upload_pdf(self,pdf_path,pdf_path_obj):
         import requests
         token = MineruConfig.mineru_token
+        if not token:
+            raise RuntimeError("请配置 MINERU_TOKEN")
         url = f"{MineruConfig.mineru_base_url}/file-urls/batch"
         header = {
             "Content-Type": "application/json",
@@ -59,7 +61,7 @@ class NodePDFToMD(NodeBase):
         # 1、考虑请求是否成功
         # 2、考虑请求数据是否成功
         # 3、考虑请求数据是否符合预期
-        response = requests.post(url, headers=header, json=data)
+        response = requests.post(url, headers=header, json=data, timeout=RuntimeConfig.model_timeout)
         if response.status_code != 200:
             logger.error("上传PDF文件请求失败")
             raise Exception(f"上传PDF文件请求失败：{pdf_path}")
@@ -75,59 +77,37 @@ class NodePDFToMD(NodeBase):
         urls = result["data"]["file_urls"]
         for i in range(0, len(urls)):
             with open(file_path[i], 'rb') as f:
-                res_upload = requests.put(urls[i], data=f)
+                res_upload = requests.put(urls[i], data=f, timeout=RuntimeConfig.model_timeout)
                 if res_upload.status_code == 200:
-                    logger.info(f"{urls[i]}上传成功")
+                    logger.info("PDF 上传成功")
                 else:
-                    logger.error(f"{urls[i]}上传失败")
+                    raise RuntimeError("PDF 上传失败")
         return batch_id
 
 
-    def get_md_zip_url(self,batch_id):
+    def get_md_zip_url(self, batch_id):
         import requests
         import time
-        token = MineruConfig.mineru_token
-        batch_id = batch_id
-        url = f"https://mineru.net/api/v4/extract-results/batch/{batch_id}"
-        header = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
-
-        # 计时的变量
-        total_time = 300  # 总时间
-        use_time = 0
-        while True:
-            start_time = time.time()
-            try:
-                res = requests.get(url, headers=header)
-                if res.status_code != 200:
-                    logger.error("获取PDF文件处理结果请求失败")
-                    raise Exception(f"获取PDF文件处理结果请求失败")
-
-                result = res.json()
-                if result["code"] != 0:
-                    logger.error("获取PDF文件处理结果请求数据失败")
-                    raise Exception(f"获取PDF文件处理结果请求数据失败")
-                data = result["data"]['extract_result'][0]
-                if data['state'] != "done":
-                    logger.info("PDF文件处理中")
-                    raise Exception(f"PDF文件处理中尚未完成")
-
-                zip_url = data['full_zip_url']
-                return zip_url
-            except Exception as e:
-                logger.error(f"PDF文件处理异常，等待重试{e}")
-                end_time = time.time()
-                use_time += end_time - start_time
-                if use_time > total_time:
-                    raise Exception(f"PDF文件处理超时,请稍后再试")
-                continue
-
+        url = f"{MineruConfig.mineru_base_url}/extract-results/batch/{batch_id}"
+        headers = {"Authorization": f"Bearer {MineruConfig.mineru_token}"}
+        deadline = time.monotonic() + MineruConfig.poll_timeout
+        while time.monotonic() < deadline:
+            response = requests.get(url, headers=headers, timeout=RuntimeConfig.model_timeout)
+            response.raise_for_status()
+            result = response.json()
+            if result.get("code") != 0:
+                raise RuntimeError("MinerU 返回失败状态")
+            data = result["data"]["extract_result"][0]
+            if data["state"] == "done":
+                return data["full_zip_url"]
+            if data["state"] == "failed":
+                raise RuntimeError("MinerU 解析失败")
+            time.sleep(min(2, max(0, deadline - time.monotonic())))
+        raise TimeoutError("MinerU 解析超时")
 
     def download_zip_handler(self,md_zip_url,local_dir_obj,pdf_path_obj):
         import requests
-        md_zip_res = requests.get(md_zip_url)
+        md_zip_res = requests.get(md_zip_url, timeout=RuntimeConfig.model_timeout)
         if md_zip_res.status_code != 200:
             logger.error("下载PDF文件处理结果zip压缩包请求失败")
             raise Exception(f"下载PDF文件处理结果zip压缩包请求失败")
@@ -145,18 +125,15 @@ class NodePDFToMD(NodeBase):
 
         #       解压zip文件
         import zipfile
-        import shutil
-        unzip_file_content = zipfile.ZipFile(md_zip_path_obj)
-        #       解压到哪，构造解压的目的地 路径
-        unzip_file_path_obj = local_dir_obj / f"{pdf_path_obj.stem}"
-
-        #       判断解压的目录存在不存在，如果存在先删除，然后再创建
-        if unzip_file_path_obj.exists():
-            shutil.rmtree(unzip_file_path_obj)
-        unzip_file_path_obj.mkdir(parents=True, exist_ok=True)
-
-        #         真正的把解压的内容，放到这个目录
-        unzip_file_content.extractall(unzip_file_path_obj)
+        import uuid
+        unzip_file_path_obj = local_dir_obj / f"parsed-{uuid.uuid4().hex}"
+        unzip_file_path_obj.mkdir(parents=True, exist_ok=False)
+        with zipfile.ZipFile(md_zip_path_obj) as archive:
+            for info in archive.infolist():
+                dest = (unzip_file_path_obj / info.filename).resolve()
+                if not dest.is_relative_to(unzip_file_path_obj.resolve()):
+                    raise ValueError("解析压缩包包含非法路径")
+            archive.extractall(unzip_file_path_obj)
 
         #       解压完成后，原本的md文件叫 full.md,我们需要重命名
         origin_md_path_obj = unzip_file_path_obj / "full.md"

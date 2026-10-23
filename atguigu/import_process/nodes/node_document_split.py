@@ -92,7 +92,7 @@ class NodeDocumentSplit(NodeBase):
             "file_title": file_title
         })
 
-        return section_list
+        return [section for section in section_list if section["content"].strip()]
 
     def get_final_section_list(self,section_list,md_path_obj,file_title):
         # 长切短合

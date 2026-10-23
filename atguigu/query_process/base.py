@@ -48,7 +48,7 @@ class NodeBase(ABC):
 
             return result
         except Exception as e:
-            logger.error(f"{self.name} 执行失败: {e}")
+            logger.error("%s 执行失败 type=%s", self.name, type(e).__name__)
             raise
 
     @abstractmethod
