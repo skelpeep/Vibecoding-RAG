@@ -42,6 +42,8 @@ uv run python scripts/init_stage2.py
 .\scripts\start-project.ps1
 ```
 
+项目在 `pyproject.toml` 中显式指定官方 PyPI 作为默认包源，使本地与 GitHub CI 使用同一份锁文件。如果更改包源，需要重新生成并验证 `uv.lock`；不要通过去掉 `--locked` 跳过一致性检查。
+
 初始化脚本执行数据库迁移，并创建随机密码的示例身份；重复运行不重置已有用户或权限。启动脚本安装前端依赖并构建，随后在后台启动 API、导入 worker、知识沉淀 worker。
 
 - 页面：http://127.0.0.1:8105

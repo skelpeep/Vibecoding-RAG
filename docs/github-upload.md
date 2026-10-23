@@ -53,7 +53,7 @@ git push -u origin HEAD:main
 
 上面是其他新仓库的通用示例；本项目当前已有 `origin`，不要重复添加。先用 `git remote -v` 核对目标地址。`upstream` 用于追溯原仓库，保留即可。首次 push 会同时上传当前分支可达的历史，检查脚本的 `--history` 会检查本地所有引用下的历史对象。
 
-GitHub Actions 会执行隔离后端测试和前端构建；真实模型/虚拟机集成验收不在 CI 自动运行，也不需要把 `.env` 放进仓库。工作流尚未在 GitHub 实际触发，本机检查不等于远端 CI 已通过。
+GitHub Actions 会执行隔离后端测试和前端构建；真实模型/虚拟机集成验收不在 CI 自动运行，也不需要把 `.env` 放进仓库。本机检查不等于远端 CI 已通过，远端状态以仓库 Actions 页面为准。
 
 含中文的 PowerShell 脚本使用 UTF-8 BOM，兼容 Windows PowerShell 5.1；`.editorconfig`、仓库扫描以及 Windows CI 共同检查编码和解析。不要以“UTF-8 无 BOM”重新保存这些脚本。
 
@@ -65,7 +65,7 @@ GitHub Actions 会执行隔离后端测试和前端构建；真实模型/虚拟�
 - `npm --prefix frontend run build` 的类型检查和生产构建通过；`uv lock --check`、`uv build` 与发行内容核对通过。
 - 新增安装、索引和上传文档的相对链接检查通过。完整清单和检查时间在本机 `var/reports/github-readiness.json`，回归/构建输出在 `var/reports/`。
 
-这些验证没有在新的操作系统上重新部署存储或调用模型，也没有触发远端 GitHub Actions。
+这些本机验证没有在新的操作系统上重新部署存储或调用模型。首次推送触发的 GitHub Actions 中，前端构建和 Windows 脚本检查通过；后端在安装依赖时发现本机默认镜像与远端官方 PyPI 不一致，触发 `--locked` 检查失败，尚未运行测试。项目现已显式声明官方 PyPI 并重新生成锁文件，后续运行结果以 Actions 页面为准。
 
 ## 来源与许可
 
